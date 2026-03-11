@@ -27,7 +27,7 @@ interface Props {
     categories: Category[];
     entries: Record<number, Record<number, EntryData>>;
     invoicedCategoryIds: number[];
-    limiteFatturato: number;
+    invoiceLimit: number;
 }
 
 const MONTHS = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
@@ -112,7 +112,7 @@ function TotalsRow({ label, categories, cells }: TotalsRowProps) {
     );
 }
 
-export default function BudgetIndex({ year, categories, entries, invoicedCategoryIds, limiteFatturato }: Props) {
+export default function BudgetIndex({ year, categories, entries, invoicedCategoryIds, invoiceLimit }: Props) {
     const [cells, setCells] = useState<CellState>(() => buildInitialCells(categories, entries));
     const initialCellsRef = useRef<CellState>(buildInitialCells(categories, entries));
 
@@ -189,8 +189,8 @@ export default function BudgetIndex({ year, categories, entries, invoicedCategor
         return total;
     }, 0);
 
-    const invoicePercentage = limiteFatturato > 0 ? (invoicedBudgetTotal / limiteFatturato) * 100 : 0;
-    const isOverLimit = invoicedBudgetTotal > limiteFatturato && limiteFatturato > 0;
+    const invoicePercentage = invoiceLimit > 0 ? (invoicedBudgetTotal / invoiceLimit) * 100 : 0;
+    const isOverLimit = invoicedBudgetTotal > invoiceLimit && invoiceLimit > 0;
 
     return (
         <AppLayout>
@@ -231,7 +231,7 @@ export default function BudgetIndex({ year, categories, entries, invoicedCategor
                 </div>
 
                 {/* Invoice limit progress */}
-                {limiteFatturato > 0 && (
+                {invoiceLimit > 0 && (
                     <div className="rounded-lg border bg-card p-4 shadow-xs">
                         <div className="flex items-center justify-between text-sm">
                             <span className="font-medium">Fatturato budget</span>
@@ -241,7 +241,7 @@ export default function BudgetIndex({ year, categories, entries, invoicedCategor
                                     isOverLimit ? 'text-destructive' : 'text-foreground',
                                 )}
                             >
-                                {formatCurrency(invoicedBudgetTotal)} / {formatCurrency(limiteFatturato)}
+                                {formatCurrency(invoicedBudgetTotal)} / {formatCurrency(invoiceLimit)}
                             </span>
                         </div>
                         <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-muted">
@@ -259,7 +259,7 @@ export default function BudgetIndex({ year, categories, entries, invoicedCategor
                         </div>
                         {isOverLimit && (
                             <p className="mt-1.5 text-xs font-medium text-destructive">
-                                Superato del {formatCurrency(invoicedBudgetTotal - limiteFatturato)}
+                                Superato del {formatCurrency(invoicedBudgetTotal - invoiceLimit)}
                             </p>
                         )}
                     </div>

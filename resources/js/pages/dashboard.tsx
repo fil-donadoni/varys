@@ -51,7 +51,8 @@ interface DashboardProps {
     alerts: Alert[];
     currentMonth: number;
     invoicedBudgetTotal: number;
-    limiteFatturato: number;
+    invoiceLimit: number;
+    openingBalance: number;
 }
 
 const ITALIAN_MONTHS_SHORT = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
@@ -73,6 +74,10 @@ function VarianceBadge({ budget, actual }: { budget: number; actual: number }) {
     );
 }
 
+function round(v: number) {
+    return Math.round(v * 100) / 100;
+}
+
 function currencyFormatter(value: number) {
     return new Intl.NumberFormat('it-IT', {
         style: 'currency',
@@ -87,13 +92,18 @@ function CustomTooltipCurrency({
     label,
 }: {
     active?: boolean;
-    payload?: Array<{ name: string; value: number; color: string }>;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    payload?: Array<{ name: string; value: number; color: string; payload?: any }>;
     label?: string;
 }) {
     if (!active || !payload?.length) return null;
+    const isEstimated = payload[0]?.payload?.has_actual === false;
     return (
         <div className="rounded-lg border bg-card px-3 py-2 text-sm shadow-md">
-            <p className="mb-1 font-medium text-foreground">{label}</p>
+            <p className="mb-1 font-medium text-foreground">
+                {label}
+                {isEstimated && <span className="ml-1.5 text-xs text-muted-foreground">(stimato)</span>}
+            </p>
             {payload.map((entry) => (
                 <p key={entry.name} style={{ color: entry.color }} className="leading-5">
                     {entry.name}: {formatCurrency(entry.value)}
@@ -110,7 +120,8 @@ export default function Dashboard({
     alerts,
     currentMonth,
     invoicedBudgetTotal,
-    limiteFatturato,
+    invoiceLimit,
+    openingBalance,
 }: DashboardProps) {
     const incomeCategories = categoryData.filter((c) => c.type === 'income');
     const expenseCategories = categoryData.filter((c) => c.type === 'expense');
@@ -118,32 +129,57 @@ export default function Dashboard({
     const totalBudgetIncome = monthlyData.reduce((s, m) => s + m.budget_income, 0);
     const totalBudgetExpense = monthlyData.reduce((s, m) => s + m.budget_expense, 0);
     const actualMonths = monthlyData.filter((m) => m.has_actual);
-    const totalActualIncome = actualMonths.reduce((s, m) => s + m.actual_income, 0);
-    const totalActualExpense = actualMonths.reduce((s, m) => s + m.actual_expense, 0);
-    const netBalance = totalActualIncome - totalActualExpense;
+    // Effective totals: actual where available, budget as fallback
+    const totalEffectiveIncome = monthlyData.reduce(
+        (s, m) => s + (m.has_actual ? m.actual_income : m.budget_income),
+        0,
+    );
+    const totalEffectiveExpense = monthlyData.reduce(
+        (s, m) => s + (m.has_actual ? m.actual_expense : m.budget_expense),
+        0,
+    );
+    const netBalance = totalEffectiveIncome - totalEffectiveExpense;
     const savingsRate =
-        totalActualIncome > 0 ? ((totalActualIncome - totalActualExpense) / totalActualIncome) * 100 : 0;
+        totalEffectiveIncome > 0 ? ((totalEffectiveIncome - totalEffectiveExpense) / totalEffectiveIncome) * 100 : 0;
 
     const barChartData = monthlyData.map((m) => ({
         month: ITALIAN_MONTHS_SHORT[m.month - 1],
         'Entrate Budget': m.budget_income,
-        'Entrate Consuntivo': m.has_actual ? m.actual_income : null,
+        'Entrate Consuntivo': m.has_actual ? m.actual_income : m.budget_income,
         'Uscite Budget': m.budget_expense,
-        'Uscite Consuntivo': m.has_actual ? m.actual_expense : null,
+        'Uscite Consuntivo': m.has_actual ? m.actual_expense : m.budget_expense,
+        has_actual: m.has_actual,
     }));
 
-    const lineChartData = monthlyData.map((m) => ({
-        month: ITALIAN_MONTHS_SHORT[m.month - 1],
-        'Saldo Budget': m.cumulative_budget,
-        'Saldo Reale': m.cumulative_actual,
-    }));
+    // Build cumulative line data: actual line uses real data, projected uses budget fallback
+    const lastActualMonth = monthlyData.filter((d) => d.has_actual).pop()?.month ?? 0;
+    const lineChartData = monthlyData.reduce<
+        Array<{
+            month: string;
+            'Saldo Budget': number;
+            'Saldo Reale': number | null;
+            'Saldo Proiezione': number | null;
+        }>
+    >((acc, m, i) => {
+        const prevActual = i > 0 ? (acc[i - 1]['Saldo Reale'] ?? 0) : openingBalance;
+        const prevProjected = i > 0 ? (acc[i - 1]['Saldo Proiezione'] ?? 0) : openingBalance;
+        const cumulActual = m.has_actual ? prevActual + m.actual_balance : 0;
+        const cumulProjected = prevProjected + (m.has_actual ? m.actual_balance : m.budget_balance);
+        acc.push({
+            month: ITALIAN_MONTHS_SHORT[m.month - 1],
+            'Saldo Budget': m.cumulative_budget,
+            'Saldo Reale': m.has_actual ? round(cumulActual) : null,
+            'Saldo Proiezione': m.month >= lastActualMonth ? round(cumulProjected) : null,
+        });
+        return acc;
+    }, []);
 
     function navigateYear(delta: number) {
         router.get('/', { year: year + delta }, { preserveState: true });
     }
 
-    const invoicePercentage = limiteFatturato > 0 ? (invoicedBudgetTotal / limiteFatturato) * 100 : 0;
-    const isOverLimit = invoicedBudgetTotal > limiteFatturato && limiteFatturato > 0;
+    const invoicePercentage = invoiceLimit > 0 ? (invoicedBudgetTotal / invoiceLimit) * 100 : 0;
+    const isOverLimit = invoicedBudgetTotal > invoiceLimit && invoiceLimit > 0;
 
     const alertStyles: Record<Alert['type'], string> = {
         warning:
@@ -195,7 +231,7 @@ export default function Dashboard({
                 )}
 
                 {/* Invoice limit progress */}
-                {limiteFatturato > 0 && (
+                {invoiceLimit > 0 && (
                     <div className="rounded-lg border bg-card p-4 shadow-xs">
                         <div className="flex items-center justify-between text-sm">
                             <span className="font-medium">Fatturato budget</span>
@@ -205,7 +241,7 @@ export default function Dashboard({
                                     isOverLimit ? 'text-destructive' : 'text-foreground',
                                 )}
                             >
-                                {formatCurrency(invoicedBudgetTotal)} / {formatCurrency(limiteFatturato)}
+                                {formatCurrency(invoicedBudgetTotal)} / {formatCurrency(invoiceLimit)}
                             </span>
                         </div>
                         <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-muted">
@@ -223,7 +259,7 @@ export default function Dashboard({
                         </div>
                         {isOverLimit && (
                             <p className="mt-1.5 text-xs font-medium text-destructive">
-                                Superato del {formatCurrency(invoicedBudgetTotal - limiteFatturato)}
+                                Superato del {formatCurrency(invoicedBudgetTotal - invoiceLimit)}
                             </p>
                         )}
                     </div>
@@ -239,13 +275,18 @@ export default function Dashboard({
                                 </CardTitle>
                             </CardHeader>
                             <CardContent className="space-y-1">
-                                <p className="text-2xl font-bold tabular-nums">{formatCurrency(totalActualIncome)}</p>
+                                <p className="text-2xl font-bold tabular-nums">
+                                    {formatCurrency(totalEffectiveIncome)}
+                                </p>
                                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                     <span>Budget: {formatCurrency(totalBudgetIncome)}</span>
-                                    {actualMonths.length > 0 && (
-                                        <VarianceBadge budget={totalBudgetIncome} actual={totalActualIncome} />
-                                    )}
+                                    <VarianceBadge budget={totalBudgetIncome} actual={totalEffectiveIncome} />
                                 </div>
+                                {actualMonths.length < 12 && (
+                                    <p className="text-[10px] text-muted-foreground">
+                                        {12 - actualMonths.length} mesi stimati da budget
+                                    </p>
+                                )}
                             </CardContent>
                         </Card>
 
@@ -256,13 +297,18 @@ export default function Dashboard({
                                 </CardTitle>
                             </CardHeader>
                             <CardContent className="space-y-1">
-                                <p className="text-2xl font-bold tabular-nums">{formatCurrency(totalActualExpense)}</p>
+                                <p className="text-2xl font-bold tabular-nums">
+                                    {formatCurrency(totalEffectiveExpense)}
+                                </p>
                                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                     <span>Budget: {formatCurrency(totalBudgetExpense)}</span>
-                                    {actualMonths.length > 0 && (
-                                        <VarianceBadge budget={totalBudgetExpense} actual={totalActualExpense} />
-                                    )}
+                                    <VarianceBadge budget={totalBudgetExpense} actual={totalEffectiveExpense} />
                                 </div>
+                                {actualMonths.length < 12 && (
+                                    <p className="text-[10px] text-muted-foreground">
+                                        {12 - actualMonths.length} mesi stimati da budget
+                                    </p>
+                                )}
                             </CardContent>
                         </Card>
 
@@ -280,7 +326,7 @@ export default function Dashboard({
                                 >
                                     {formatCurrency(netBalance)}
                                 </p>
-                                <p className="text-xs text-muted-foreground">Entrate − Uscite consuntivo</p>
+                                <p className="text-xs text-muted-foreground">Consuntivo + stime da budget</p>
                             </CardContent>
                         </Card>
 
@@ -316,6 +362,44 @@ export default function Dashboard({
                     <CardContent>
                         <ResponsiveContainer width="100%" height={320}>
                             <BarChart data={barChartData} margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>
+                                <defs>
+                                    <pattern
+                                        id="stripe-green"
+                                        width="6"
+                                        height="6"
+                                        patternUnits="userSpaceOnUse"
+                                        patternTransform="rotate(45)"
+                                    >
+                                        <rect width="6" height="6" fill="#10b981" fillOpacity={0.2} />
+                                        <line
+                                            x1="0"
+                                            y1="0"
+                                            x2="0"
+                                            y2="6"
+                                            stroke="#10b981"
+                                            strokeWidth="2"
+                                            strokeOpacity={0.5}
+                                        />
+                                    </pattern>
+                                    <pattern
+                                        id="stripe-red"
+                                        width="6"
+                                        height="6"
+                                        patternUnits="userSpaceOnUse"
+                                        patternTransform="rotate(45)"
+                                    >
+                                        <rect width="6" height="6" fill="#ef4444" fillOpacity={0.2} />
+                                        <line
+                                            x1="0"
+                                            y1="0"
+                                            x2="0"
+                                            y2="6"
+                                            stroke="#ef4444"
+                                            strokeWidth="2"
+                                            strokeOpacity={0.5}
+                                        />
+                                    </pattern>
+                                </defs>
                                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                                 <XAxis
                                     dataKey="month"
@@ -333,14 +417,17 @@ export default function Dashboard({
                                 <Tooltip content={<CustomTooltipCurrency />} />
                                 <Legend wrapperStyle={{ fontSize: '12px', color: 'var(--muted-foreground)' }} />
                                 <Bar dataKey="Entrate Budget" fill="#34d399" fillOpacity={0.45} radius={[3, 3, 0, 0]} />
-                                <Bar
-                                    dataKey="Entrate Consuntivo"
-                                    fill="#10b981"
-                                    fillOpacity={1}
-                                    radius={[3, 3, 0, 0]}
-                                />
+                                <Bar dataKey="Entrate Consuntivo" radius={[3, 3, 0, 0]}>
+                                    {barChartData.map((entry, i) => (
+                                        <Cell key={i} fill={entry.has_actual ? '#10b981' : 'url(#stripe-green)'} />
+                                    ))}
+                                </Bar>
                                 <Bar dataKey="Uscite Budget" fill="#f87171" fillOpacity={0.45} radius={[3, 3, 0, 0]} />
-                                <Bar dataKey="Uscite Consuntivo" fill="#ef4444" fillOpacity={1} radius={[3, 3, 0, 0]} />
+                                <Bar dataKey="Uscite Consuntivo" radius={[3, 3, 0, 0]}>
+                                    {barChartData.map((entry, i) => (
+                                        <Cell key={i} fill={entry.has_actual ? '#ef4444' : 'url(#stripe-red)'} />
+                                    ))}
+                                </Bar>
                             </BarChart>
                         </ResponsiveContainer>
                     </CardContent>
@@ -387,6 +474,16 @@ export default function Dashboard({
                                     dot={{ r: 3, fill: '#6366f1', strokeWidth: 0 }}
                                     activeDot={{ r: 5 }}
                                     connectNulls={false}
+                                />
+                                <Line
+                                    type="monotone"
+                                    dataKey="Saldo Proiezione"
+                                    stroke="#6366f1"
+                                    strokeWidth={2}
+                                    strokeDasharray="4 4"
+                                    strokeOpacity={0.5}
+                                    dot={{ r: 2, fill: '#6366f1', strokeWidth: 0, fillOpacity: 0.5 }}
+                                    connectNulls
                                 />
                             </LineChart>
                         </ResponsiveContainer>

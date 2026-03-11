@@ -32,7 +32,7 @@ class BudgetEntryController extends Controller
             ->map(fn ($entries) => $entries->keyBy('month'))
             ->all();
 
-        $limiteFatturato = (float) Setting::getValue('limite_fatturato_annuale', '0');
+        $invoiceLimit = (float) Setting::getValue('annual_invoice_limit', '0');
         $invoicedCategoryIds = $categories
             ->filter(fn (Category $c): bool => $c->type === CategoryType::Income && (bool) $c->is_invoiced) // @phpstan-ignore identical.alwaysFalse
             ->pluck('id')
@@ -43,7 +43,7 @@ class BudgetEntryController extends Controller
             'categories' => $categories,
             'entries' => $entries,
             'invoicedCategoryIds' => $invoicedCategoryIds,
-            'limiteFatturato' => $limiteFatturato,
+            'invoiceLimit' => $invoiceLimit,
         ]);
     }
 

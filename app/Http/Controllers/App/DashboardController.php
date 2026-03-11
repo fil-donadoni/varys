@@ -117,7 +117,7 @@ class DashboardController extends Controller
             ];
         }
 
-        $limiteFatturato = (float) Setting::getValue('limite_fatturato_annuale', '0');
+        $invoiceLimit = (float) Setting::getValue('annual_invoice_limit', '0');
         $invoicedCategoryIds = $categories
             ->filter(fn (Category $c): bool => $c->type === CategoryType::Income && (bool) $c->is_invoiced) // @phpstan-ignore identical.alwaysFalse
             ->pluck('id');
@@ -126,16 +126,16 @@ class DashboardController extends Controller
             ->whereIn('category_id', $invoicedCategoryIds)
             ->sum('amount'), 2);
 
-        if ($limiteFatturato > 0 && $totalInvoicedBudget > $limiteFatturato) {
+        if ($invoiceLimit > 0 && $totalInvoicedBudget > $invoiceLimit) {
             $alerts[] = [
                 'type' => 'danger',
-                'message' => 'Il budget delle entrate fatturate ('.number_format($totalInvoicedBudget, 2, ',', '.').' €) supera il limite annuale di '.number_format($limiteFatturato, 2, ',', '.').' €.',
+                'message' => 'Il budget delle entrate fatturate ('.number_format($totalInvoicedBudget, 2, ',', '.').' €) supera il limite annuale di '.number_format($invoiceLimit, 2, ',', '.').' €.',
             ];
         }
 
-        $saldoIniziale = (float) Setting::getValue('saldo_iniziale', '0');
-        $cumulativeBudget = $saldoIniziale;
-        $cumulativeActual = $saldoIniziale;
+        $openingBalance = (float) Setting::getValue('opening_balance', '0');
+        $cumulativeBudget = $openingBalance;
+        $cumulativeActual = $openingBalance;
         foreach ($monthlyData as &$data) {
             $cumulativeBudget += $data['budget_balance'];
             $data['cumulative_budget'] = round($cumulativeBudget, 2);
@@ -157,8 +157,8 @@ class DashboardController extends Controller
             'alerts' => $alerts,
             'currentMonth' => $currentMonth,
             'invoicedBudgetTotal' => $totalInvoicedBudget,
-            'limiteFatturato' => $limiteFatturato,
-            'saldoIniziale' => $saldoIniziale,
+            'invoiceLimit' => $invoiceLimit,
+            'openingBalance' => $openingBalance,
         ]);
     }
 }

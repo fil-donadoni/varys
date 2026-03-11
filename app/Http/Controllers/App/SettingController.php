@@ -15,8 +15,8 @@ class SettingController extends Controller
     {
         return Inertia::render('settings/index', [
             'settings' => [
-                'saldo_iniziale' => Setting::getValue('saldo_iniziale', '0'),
-                'limite_fatturato_annuale' => Setting::getValue('limite_fatturato_annuale', '0'),
+                'opening_balance' => Setting::getValue('opening_balance', '0'),
+                'annual_invoice_limit' => Setting::getValue('annual_invoice_limit', '0'),
             ],
         ]);
     }
@@ -24,8 +24,8 @@ class SettingController extends Controller
     public function update(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'saldo_iniziale' => ['required', 'numeric', 'min:0'],
-            'limite_fatturato_annuale' => ['required', 'numeric', 'min:0'],
+            'opening_balance' => ['required', 'numeric', 'min:0'],
+            'annual_invoice_limit' => ['required', 'numeric', 'min:0'],
         ]);
 
         foreach ($validated as $key => $value) {
