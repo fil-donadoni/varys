@@ -3,8 +3,6 @@
 namespace Database\Seeders;
 
 use App\Enums\CategoryType;
-use App\Models\ActualEntry;
-use App\Models\BudgetEntry;
 use App\Models\Category;
 use Illuminate\Database\Seeder;
 
@@ -37,7 +35,7 @@ class DatabaseSeeder extends Seeder
             ['name' => 'Bollette', 'type' => CategoryType::Expense, 'color' => '#0ea5e9', 'sort_order' => 15],
             ['name' => 'Fondo pensione', 'type' => CategoryType::Expense, 'color' => '#7c3aed', 'sort_order' => 16],
             ['name' => 'Tasse', 'type' => CategoryType::Expense, 'color' => '#dc2626', 'sort_order' => 17],
-            ['name' => 'Nadia', 'type' => CategoryType::Expense, 'color' => '#e879f9', 'sort_order' => 18],
+            ['name' => 'Pulizie', 'type' => CategoryType::Expense, 'color' => '#e879f9', 'sort_order' => 18],
             ['name' => 'Vacanze', 'type' => CategoryType::Expense, 'color' => '#fb923c', 'sort_order' => 19],
             ['name' => 'Regali', 'type' => CategoryType::Expense, 'color' => '#c084fc', 'sort_order' => 20],
             ['name' => 'Altro', 'type' => CategoryType::Expense, 'color' => '#94a3b8', 'sort_order' => 21],
@@ -45,61 +43,5 @@ class DatabaseSeeder extends Seeder
 
         $categories = collect(array_merge($incomeCategories, $expenseCategories))
             ->map(fn (array $data): Category => Category::create($data));
-
-        $year = now()->year;
-        $currentMonth = now()->month;
-
-        foreach ($categories as $category) {
-            $baseAmount = match ($category->name) {
-                'Stipendio' => 2800.00,
-                'Freelance' => 500.00,
-                'Investimenti' => 150.00,
-                'Altro (entrate)' => 100.00,
-                'Mutuo casa' => 900.00,
-                'Finanziamento auto' => 350.00,
-                'Cloud e Hosting' => 50.00,
-                'Assicurazione' => 120.00,
-                'Spesa casa' => 450.00,
-                'Pranzi/cene' => 200.00,
-                'Telefono' => 30.00,
-                'TV e Internet' => 60.00,
-                'Formazione' => 80.00,
-                'Magic' => 100.00,
-                'Bollo / assicurazione auto' => 150.00,
-                'Benzina' => 120.00,
-                'Telepass' => 40.00,
-                'Lavori casa e giardino' => 150.00,
-                'Bollette' => 200.00,
-                'Fondo pensione' => 200.00,
-                'Tasse' => 300.00,
-                'Nadia' => 100.00,
-                'Vacanze' => 250.00,
-                'Regali' => 80.00,
-                'Altro' => 100.00,
-                default => 100.00,
-            };
-
-            for ($month = 1; $month <= 12; $month++) {
-                $variation = $baseAmount * fake()->randomFloat(2, -0.1, 0.1);
-
-                BudgetEntry::create([
-                    'category_id' => $category->id,
-                    'year' => $year,
-                    'month' => $month,
-                    'amount' => round($baseAmount + $variation, 2),
-                ]);
-            }
-
-            for ($month = 1; $month < $currentMonth; $month++) {
-                $actualVariation = $baseAmount * fake()->randomFloat(2, -0.2, 0.2);
-
-                ActualEntry::create([
-                    'category_id' => $category->id,
-                    'year' => $year,
-                    'month' => $month,
-                    'amount' => round($baseAmount + $actualVariation, 2),
-                ]);
-            }
-        }
     }
 }

@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers\App;
 
+use App\Enums\CategoryType;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\App\BulkUpsertBudgetRequest;
 use App\Models\BudgetEntry;
 use App\Models\Category;
+use App\Models\Setting;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -30,10 +32,18 @@ class BudgetEntryController extends Controller
             ->map(fn ($entries) => $entries->keyBy('month'))
             ->all();
 
+        $limiteFatturato = (float) Setting::getValue('limite_fatturato_annuale', '0');
+        $invoicedCategoryIds = $categories
+            ->filter(fn (Category $c): bool => $c->type === CategoryType::Income && (bool) $c->is_invoiced) // @phpstan-ignore identical.alwaysFalse
+            ->pluck('id')
+            ->all();
+
         return Inertia::render('budget/index', [
             'year' => $year,
             'categories' => $categories,
             'entries' => $entries,
+            'invoicedCategoryIds' => $invoicedCategoryIds,
+            'limiteFatturato' => $limiteFatturato,
         ]);
     }
 

@@ -1,6 +1,7 @@
 import { Link, usePage } from '@inertiajs/react';
-import { BarChart3, DollarSign, FolderOpen, Receipt } from 'lucide-react';
+import { BarChart3, Euro, FolderOpen, ReceiptEuro, Settings } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { Toaster } from 'sonner';
 import { cn } from '@/lib/utils';
 
 interface AppLayoutProps {
@@ -9,9 +10,10 @@ interface AppLayoutProps {
 
 const navigation = [
     { name: 'Dashboard', href: '/', icon: BarChart3 },
-    { name: 'Budget', href: '/budget', icon: DollarSign },
-    { name: 'Consuntivo', href: '/actual', icon: Receipt },
+    { name: 'Budget', href: '/budget', icon: Euro },
+    { name: 'Consuntivo', href: '/actual', icon: ReceiptEuro },
     { name: 'Categorie', href: '/categories', icon: FolderOpen },
+    { name: 'Impostazioni', href: '/settings', icon: Settings },
 ];
 
 export default function AppLayout({ children }: AppLayoutProps) {
@@ -52,6 +54,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
             </nav>
 
             <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">{children}</main>
+            <Toaster position="bottom-right" richColors />
         </div>
     );
 }

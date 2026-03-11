@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ActualEntry;
 use App\Models\BudgetEntry;
 use App\Models\Category;
+use App\Models\Setting;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -116,8 +117,25 @@ class DashboardController extends Controller
             ];
         }
 
-        $cumulativeBudget = 0.0;
-        $cumulativeActual = 0.0;
+        $limiteFatturato = (float) Setting::getValue('limite_fatturato_annuale', '0');
+        $invoicedCategoryIds = $categories
+            ->filter(fn (Category $c): bool => $c->type === CategoryType::Income && (bool) $c->is_invoiced) // @phpstan-ignore identical.alwaysFalse
+            ->pluck('id');
+
+        $totalInvoicedBudget = round((float) $budgetEntries
+            ->whereIn('category_id', $invoicedCategoryIds)
+            ->sum('amount'), 2);
+
+        if ($limiteFatturato > 0 && $totalInvoicedBudget > $limiteFatturato) {
+            $alerts[] = [
+                'type' => 'danger',
+                'message' => 'Il budget delle entrate fatturate ('.number_format($totalInvoicedBudget, 2, ',', '.').' €) supera il limite annuale di '.number_format($limiteFatturato, 2, ',', '.').' €.',
+            ];
+        }
+
+        $saldoIniziale = (float) Setting::getValue('saldo_iniziale', '0');
+        $cumulativeBudget = $saldoIniziale;
+        $cumulativeActual = $saldoIniziale;
         foreach ($monthlyData as &$data) {
             $cumulativeBudget += $data['budget_balance'];
             $data['cumulative_budget'] = round($cumulativeBudget, 2);
@@ -138,6 +156,9 @@ class DashboardController extends Controller
             'categoryData' => $categoryData,
             'alerts' => $alerts,
             'currentMonth' => $currentMonth,
+            'invoicedBudgetTotal' => $totalInvoicedBudget,
+            'limiteFatturato' => $limiteFatturato,
+            'saldoIniziale' => $saldoIniziale,
         ]);
     }
 }

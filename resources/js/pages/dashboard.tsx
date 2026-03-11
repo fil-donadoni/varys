@@ -15,7 +15,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import AppLayout from '@/layouts/app-layout';
-import { formatCurrency } from '@/lib/utils';
+import { cn, formatCurrency } from '@/lib/utils';
 
 interface MonthlyData {
     month: number;
@@ -50,12 +50,11 @@ interface DashboardProps {
     categoryData: CategoryData[];
     alerts: Alert[];
     currentMonth: number;
+    invoicedBudgetTotal: number;
+    limiteFatturato: number;
 }
 
-const ITALIAN_MONTHS_SHORT = [
-    'Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu',
-    'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic',
-];
+const ITALIAN_MONTHS_SHORT = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
 
 function VarianceBadge({ budget, actual }: { budget: number; actual: number }) {
     const variance = actual - budget;
@@ -93,7 +92,7 @@ function CustomTooltipCurrency({
 }) {
     if (!active || !payload?.length) return null;
     return (
-        <div className="rounded-lg border bg-card px-3 py-2 shadow-md text-sm">
+        <div className="rounded-lg border bg-card px-3 py-2 text-sm shadow-md">
             <p className="mb-1 font-medium text-foreground">{label}</p>
             {payload.map((entry) => (
                 <p key={entry.name} style={{ color: entry.color }} className="leading-5">
@@ -104,7 +103,15 @@ function CustomTooltipCurrency({
     );
 }
 
-export default function Dashboard({ year, monthlyData, categoryData, alerts, currentMonth }: DashboardProps) {
+export default function Dashboard({
+    year,
+    monthlyData,
+    categoryData,
+    alerts,
+    currentMonth,
+    invoicedBudgetTotal,
+    limiteFatturato,
+}: DashboardProps) {
     const incomeCategories = categoryData.filter((c) => c.type === 'income');
     const expenseCategories = categoryData.filter((c) => c.type === 'expense');
 
@@ -135,8 +142,12 @@ export default function Dashboard({ year, monthlyData, categoryData, alerts, cur
         router.get('/', { year: year + delta }, { preserveState: true });
     }
 
+    const invoicePercentage = limiteFatturato > 0 ? (invoicedBudgetTotal / limiteFatturato) * 100 : 0;
+    const isOverLimit = invoicedBudgetTotal > limiteFatturato && limiteFatturato > 0;
+
     const alertStyles: Record<Alert['type'], string> = {
-        warning: 'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-300',
+        warning:
+            'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-300',
         danger: 'border-red-300 bg-red-50 text-red-800 dark:border-red-700 dark:bg-red-950/40 dark:text-red-300',
         info: 'border-blue-300 bg-blue-50 text-blue-800 dark:border-blue-700 dark:bg-blue-950/40 dark:text-blue-300',
     };
@@ -153,17 +164,15 @@ export default function Dashboard({ year, monthlyData, categoryData, alerts, cur
                         <button
                             onClick={() => navigateYear(-1)}
                             aria-label="Anno precedente"
-                            className="flex h-9 w-9 items-center justify-center rounded-md border border-input bg-background text-sm font-medium shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            className="flex h-9 w-9 items-center justify-center rounded-md border border-input bg-background text-sm font-medium shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                         >
                             &#8249;
                         </button>
-                        <span className="min-w-16 text-center text-lg font-semibold tabular-nums">
-                            {year}
-                        </span>
+                        <span className="min-w-16 text-center text-lg font-semibold tabular-nums">{year}</span>
                         <button
                             onClick={() => navigateYear(1)}
                             aria-label="Anno successivo"
-                            className="flex h-9 w-9 items-center justify-center rounded-md border border-input bg-background text-sm font-medium shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            className="flex h-9 w-9 items-center justify-center rounded-md border border-input bg-background text-sm font-medium shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                         >
                             &#8250;
                         </button>
@@ -185,6 +194,41 @@ export default function Dashboard({ year, monthlyData, categoryData, alerts, cur
                     </ul>
                 )}
 
+                {/* Invoice limit progress */}
+                {limiteFatturato > 0 && (
+                    <div className="rounded-lg border bg-card p-4 shadow-xs">
+                        <div className="flex items-center justify-between text-sm">
+                            <span className="font-medium">Fatturato budget</span>
+                            <span
+                                className={cn(
+                                    'font-semibold tabular-nums',
+                                    isOverLimit ? 'text-destructive' : 'text-foreground',
+                                )}
+                            >
+                                {formatCurrency(invoicedBudgetTotal)} / {formatCurrency(limiteFatturato)}
+                            </span>
+                        </div>
+                        <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-muted">
+                            <div
+                                className={cn(
+                                    'h-full rounded-full transition-all',
+                                    isOverLimit
+                                        ? 'bg-destructive'
+                                        : invoicePercentage > 80
+                                          ? 'bg-amber-500'
+                                          : 'bg-emerald-500',
+                                )}
+                                style={{ width: `${Math.min(invoicePercentage, 100)}%` }}
+                            />
+                        </div>
+                        {isOverLimit && (
+                            <p className="mt-1.5 text-xs font-medium text-destructive">
+                                Superato del {formatCurrency(invoicedBudgetTotal - limiteFatturato)}
+                            </p>
+                        )}
+                    </div>
+                )}
+
                 {/* KPI cards */}
                 <section aria-label="Riepilogo">
                     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -195,9 +239,7 @@ export default function Dashboard({ year, monthlyData, categoryData, alerts, cur
                                 </CardTitle>
                             </CardHeader>
                             <CardContent className="space-y-1">
-                                <p className="text-2xl font-bold tabular-nums">
-                                    {formatCurrency(totalActualIncome)}
-                                </p>
+                                <p className="text-2xl font-bold tabular-nums">{formatCurrency(totalActualIncome)}</p>
                                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                     <span>Budget: {formatCurrency(totalBudgetIncome)}</span>
                                     {actualMonths.length > 0 && (
@@ -214,9 +256,7 @@ export default function Dashboard({ year, monthlyData, categoryData, alerts, cur
                                 </CardTitle>
                             </CardHeader>
                             <CardContent className="space-y-1">
-                                <p className="text-2xl font-bold tabular-nums">
-                                    {formatCurrency(totalActualExpense)}
-                                </p>
+                                <p className="text-2xl font-bold tabular-nums">{formatCurrency(totalActualExpense)}</p>
                                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                     <span>Budget: {formatCurrency(totalBudgetExpense)}</span>
                                     {actualMonths.length > 0 && (
@@ -228,21 +268,19 @@ export default function Dashboard({ year, monthlyData, categoryData, alerts, cur
 
                         <Card>
                             <CardHeader>
-                                <CardTitle className="text-sm font-medium text-muted-foreground">
-                                    Saldo Netto
-                                </CardTitle>
+                                <CardTitle className="text-sm font-medium text-muted-foreground">Saldo Netto</CardTitle>
                             </CardHeader>
                             <CardContent className="space-y-1">
                                 <p
                                     className={`text-2xl font-bold tabular-nums ${
-                                        netBalance >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
+                                        netBalance >= 0
+                                            ? 'text-emerald-600 dark:text-emerald-400'
+                                            : 'text-red-600 dark:text-red-400'
                                     }`}
                                 >
                                     {formatCurrency(netBalance)}
                                 </p>
-                                <p className="text-xs text-muted-foreground">
-                                    Entrate − Uscite consuntivo
-                                </p>
+                                <p className="text-xs text-muted-foreground">Entrate − Uscite consuntivo</p>
                             </CardContent>
                         </Card>
 
@@ -255,7 +293,9 @@ export default function Dashboard({ year, monthlyData, categoryData, alerts, cur
                             <CardContent className="space-y-1">
                                 <p
                                     className={`text-2xl font-bold tabular-nums ${
-                                        savingsRate >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
+                                        savingsRate >= 0
+                                            ? 'text-emerald-600 dark:text-emerald-400'
+                                            : 'text-red-600 dark:text-red-400'
                                     }`}
                                 >
                                     {savingsRate.toFixed(1)}%
@@ -291,33 +331,16 @@ export default function Dashboard({ year, monthlyData, categoryData, alerts, cur
                                     width={80}
                                 />
                                 <Tooltip content={<CustomTooltipCurrency />} />
-                                <Legend
-                                    wrapperStyle={{ fontSize: '12px', color: 'var(--muted-foreground)' }}
-                                />
-                                <Bar
-                                    dataKey="Entrate Budget"
-                                    fill="#34d399"
-                                    fillOpacity={0.45}
-                                    radius={[3, 3, 0, 0]}
-                                />
+                                <Legend wrapperStyle={{ fontSize: '12px', color: 'var(--muted-foreground)' }} />
+                                <Bar dataKey="Entrate Budget" fill="#34d399" fillOpacity={0.45} radius={[3, 3, 0, 0]} />
                                 <Bar
                                     dataKey="Entrate Consuntivo"
                                     fill="#10b981"
                                     fillOpacity={1}
                                     radius={[3, 3, 0, 0]}
                                 />
-                                <Bar
-                                    dataKey="Uscite Budget"
-                                    fill="#f87171"
-                                    fillOpacity={0.45}
-                                    radius={[3, 3, 0, 0]}
-                                />
-                                <Bar
-                                    dataKey="Uscite Consuntivo"
-                                    fill="#ef4444"
-                                    fillOpacity={1}
-                                    radius={[3, 3, 0, 0]}
-                                />
+                                <Bar dataKey="Uscite Budget" fill="#f87171" fillOpacity={0.45} radius={[3, 3, 0, 0]} />
+                                <Bar dataKey="Uscite Consuntivo" fill="#ef4444" fillOpacity={1} radius={[3, 3, 0, 0]} />
                             </BarChart>
                         </ResponsiveContainer>
                     </CardContent>
@@ -346,9 +369,7 @@ export default function Dashboard({ year, monthlyData, categoryData, alerts, cur
                                     width={80}
                                 />
                                 <Tooltip content={<CustomTooltipCurrency />} />
-                                <Legend
-                                    wrapperStyle={{ fontSize: '12px', color: 'var(--muted-foreground)' }}
-                                />
+                                <Legend wrapperStyle={{ fontSize: '12px', color: 'var(--muted-foreground)' }} />
                                 <Line
                                     type="monotone"
                                     dataKey="Saldo Budget"
@@ -389,7 +410,11 @@ export default function Dashboard({ year, monthlyData, categoryData, alerts, cur
                                         layout="vertical"
                                         margin={{ top: 0, right: 12, left: 8, bottom: 0 }}
                                     >
-                                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--border)" />
+                                        <CartesianGrid
+                                            strokeDasharray="3 3"
+                                            horizontal={false}
+                                            stroke="var(--border)"
+                                        />
                                         <XAxis
                                             type="number"
                                             tickFormatter={currencyFormatter}
@@ -406,9 +431,7 @@ export default function Dashboard({ year, monthlyData, categoryData, alerts, cur
                                             width={100}
                                         />
                                         <Tooltip content={<CustomTooltipCurrency />} />
-                                        <Legend
-                                            wrapperStyle={{ fontSize: '12px', color: 'var(--muted-foreground)' }}
-                                        />
+                                        <Legend wrapperStyle={{ fontSize: '12px', color: 'var(--muted-foreground)' }} />
                                         <Bar
                                             dataKey="budget_total"
                                             name="Budget"
@@ -450,7 +473,11 @@ export default function Dashboard({ year, monthlyData, categoryData, alerts, cur
                                         layout="vertical"
                                         margin={{ top: 0, right: 12, left: 8, bottom: 0 }}
                                     >
-                                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--border)" />
+                                        <CartesianGrid
+                                            strokeDasharray="3 3"
+                                            horizontal={false}
+                                            stroke="var(--border)"
+                                        />
                                         <XAxis
                                             type="number"
                                             tickFormatter={currencyFormatter}
@@ -467,9 +494,7 @@ export default function Dashboard({ year, monthlyData, categoryData, alerts, cur
                                             width={100}
                                         />
                                         <Tooltip content={<CustomTooltipCurrency />} />
-                                        <Legend
-                                            wrapperStyle={{ fontSize: '12px', color: 'var(--muted-foreground)' }}
-                                        />
+                                        <Legend wrapperStyle={{ fontSize: '12px', color: 'var(--muted-foreground)' }} />
                                         <Bar
                                             dataKey="budget_total"
                                             name="Budget"

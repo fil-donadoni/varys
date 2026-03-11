@@ -1,17 +1,10 @@
 import { Head, router } from '@inertiajs/react';
-import { ChevronLeft, ChevronRight, Save } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableFooter,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from '@/components/ui/table';
+import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
 import { cn, formatCurrency, formatMonth } from '@/lib/utils';
 
@@ -50,10 +43,7 @@ type RowState = {
 
 type FormState = Record<number, RowState>;
 
-function buildInitialForm(
-    categories: Category[],
-    entries: Record<number, ActualEntry>,
-): FormState {
+function buildInitialForm(categories: Category[], entries: Record<number, ActualEntry>): FormState {
     const form: FormState = {};
     for (const cat of categories) {
         const entry = entries[cat.id];
@@ -87,7 +77,7 @@ function TypeGroupHeaderRow({ label }: { label: string }) {
         <TableRow className="bg-muted/60 hover:bg-muted/60">
             <TableCell
                 colSpan={5}
-                className="py-2 pl-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                className="py-1.5 pl-3 text-[10px] font-semibold tracking-wider text-muted-foreground uppercase"
             >
                 {label}
             </TableCell>
@@ -108,12 +98,8 @@ function VarianceCell({ actual, budget, type }: VarianceCellProps) {
 
     const diff = actual - budget;
 
-    // For income: positive diff is good (earned more than budgeted)
-    // For expense: negative diff is good (spent less than budgeted)
-    const favorable =
-        (type === 'income' && diff >= 0) || (type === 'expense' && diff <= 0);
-    const unfavorable =
-        (type === 'income' && diff < 0) || (type === 'expense' && diff > 0);
+    const favorable = (type === 'income' && diff >= 0) || (type === 'expense' && diff <= 0);
+    const unfavorable = (type === 'income' && diff < 0) || (type === 'expense' && diff > 0);
 
     return (
         <span
@@ -139,25 +125,19 @@ interface GroupTotalsRowProps {
 }
 
 function GroupTotalsRow({ label, categories, form, budgetEntries, type }: GroupTotalsRowProps) {
-    const actualTotal = categories.reduce(
-        (sum, cat) => sum + parseAmount(form[cat.id]?.amount ?? ''),
-        0,
-    );
-    const budgetTotal = categories.reduce(
-        (sum, cat) => sum + parseAmount(budgetEntries[cat.id]?.amount ?? '0'),
-        0,
-    );
+    const actualTotal = categories.reduce((sum, cat) => sum + parseAmount(form[cat.id]?.amount ?? ''), 0);
+    const budgetTotal = categories.reduce((sum, cat) => sum + parseAmount(budgetEntries[cat.id]?.amount ?? '0'), 0);
 
     return (
         <TableRow className="bg-muted/30 font-semibold hover:bg-muted/30">
-            <TableCell className="py-2 pl-3 text-sm">{label}</TableCell>
-            <TableCell className="py-2 text-right text-sm tabular-nums">
+            <TableCell className="py-1.5 pl-3 text-xs">{label}</TableCell>
+            <TableCell className="py-1.5 text-right text-xs tabular-nums">
                 {budgetTotal !== 0 ? formatCurrency(budgetTotal) : <span className="text-muted-foreground">—</span>}
             </TableCell>
-            <TableCell className="py-2 text-right text-sm tabular-nums">
+            <TableCell className="py-1.5 text-right text-xs tabular-nums">
                 {actualTotal !== 0 ? formatCurrency(actualTotal) : <span className="text-muted-foreground">—</span>}
             </TableCell>
-            <TableCell className="py-2 text-right text-sm">
+            <TableCell className="py-1.5 text-right text-xs">
                 <VarianceCell actual={actualTotal} budget={budgetTotal} type={type} />
             </TableCell>
             <TableCell />
@@ -167,60 +147,63 @@ function GroupTotalsRow({ label, categories, form, budgetEntries, type }: GroupT
 
 export default function ActualIndex({ year, month, categories, entries, budgetEntries }: Props) {
     const [form, setForm] = useState<FormState>(() => buildInitialForm(categories, entries));
-    const [dirty, setDirty] = useState(false);
-    const [processing, setProcessing] = useState(false);
+    const initialFormRef = useRef<FormState>(buildInitialForm(categories, entries));
 
     useEffect(() => {
-        setForm(buildInitialForm(categories, entries));
-        setDirty(false);
+        const initial = buildInitialForm(categories, entries);
+        setForm(initial);
+        initialFormRef.current = initial;
     }, [year, month, categories, entries]);
 
-    const handleChange = useCallback(
-        (catId: number, field: keyof RowState, value: string) => {
-            setForm((prev) => ({
-                ...prev,
-                [catId]: { ...prev[catId], [field]: value },
-            }));
-            setDirty(true);
-        },
-        [],
-    );
+    const handleChange = useCallback((catId: number, field: keyof RowState, value: string) => {
+        setForm((prev) => ({
+            ...prev,
+            [catId]: { ...prev[catId], [field]: value },
+        }));
+    }, []);
 
-    const handleSave = () => {
-        const payload: Array<{
-            category_id: number;
-            amount: string | null;
-            description: string | null;
-            notes: string | null;
-        }> = [];
+    const handleRowBlur = useCallback(
+        (catId: number) => {
+            const currentRow = form[catId];
+            const initialRow = initialFormRef.current[catId];
 
-        for (const cat of categories) {
-            const row = form[cat.id];
-            const existingEntry = entries[cat.id];
-
-            if (row?.amount !== '' || existingEntry) {
-                payload.push({
-                    category_id: cat.id,
-                    amount: row?.amount !== '' ? String(parseAmount(row?.amount ?? '')) : null,
-                    description: row?.description || null,
-                    notes: existingEntry?.notes ?? null,
-                });
+            if (currentRow?.amount === initialRow?.amount && currentRow?.description === initialRow?.description) {
+                return;
             }
-        }
 
-        setProcessing(true);
-        router.post(
-            '/actual/bulk',
-            { year, month, entries: payload },
-            {
-                preserveScroll: true,
-                onSuccess: () => {
-                    setDirty(false);
+            const amount = currentRow?.amount !== '' ? String(parseAmount(currentRow?.amount ?? '')) : null;
+            if (amount === null || amount === '0') return;
+
+            const existingEntry = entries[catId];
+
+            router.post(
+                '/actual/bulk',
+                {
+                    year,
+                    month,
+                    entries: [
+                        {
+                            category_id: catId,
+                            amount,
+                            description: currentRow?.description || null,
+                            notes: existingEntry?.notes ?? null,
+                        },
+                    ],
                 },
-                onFinish: () => setProcessing(false),
-            },
-        );
-    };
+                {
+                    preserveScroll: true,
+                    onSuccess: () => {
+                        initialFormRef.current[catId] = { ...currentRow };
+                        toast.success('Salvato');
+                    },
+                    onError: () => {
+                        toast.error('Errore durante il salvataggio');
+                    },
+                },
+            );
+        },
+        [form, entries, year, month],
+    );
 
     const navigateMonth = (delta: number) => {
         let newMonth = month + delta;
@@ -239,22 +222,14 @@ export default function ActualIndex({ year, month, categories, entries, budgetEn
         router.get('/actual', { year: year + delta, month }, { preserveScroll: false });
     };
 
-    const incomeCategories = categories
-        .filter((c) => c.type === 'income')
-        .sort((a, b) => a.sort_order - b.sort_order);
+    const incomeCategories = categories.filter((c) => c.type === 'income').sort((a, b) => a.sort_order - b.sort_order);
 
     const expenseCategories = categories
         .filter((c) => c.type === 'expense')
         .sort((a, b) => a.sort_order - b.sort_order);
 
-    const allIncomeActual = incomeCategories.reduce(
-        (sum, cat) => sum + parseAmount(form[cat.id]?.amount ?? ''),
-        0,
-    );
-    const allExpenseActual = expenseCategories.reduce(
-        (sum, cat) => sum + parseAmount(form[cat.id]?.amount ?? ''),
-        0,
-    );
+    const allIncomeActual = incomeCategories.reduce((sum, cat) => sum + parseAmount(form[cat.id]?.amount ?? ''), 0);
+    const allExpenseActual = expenseCategories.reduce((sum, cat) => sum + parseAmount(form[cat.id]?.amount ?? ''), 0);
     const allIncomeBudget = incomeCategories.reduce(
         (sum, cat) => sum + parseAmount(budgetEntries[cat.id]?.amount ?? '0'),
         0,
@@ -294,9 +269,7 @@ export default function ActualIndex({ year, month, categories, entries, budgetEn
                             >
                                 <ChevronLeft className="size-4" />
                             </Button>
-                            <span className="min-w-12 text-center text-sm font-semibold tabular-nums">
-                                {year}
-                            </span>
+                            <span className="min-w-12 text-center text-sm font-semibold tabular-nums">{year}</span>
                             <Button
                                 variant="ghost"
                                 size="icon"
@@ -319,9 +292,7 @@ export default function ActualIndex({ year, month, categories, entries, budgetEn
                             >
                                 <ChevronLeft className="size-4" />
                             </Button>
-                            <span className="min-w-20 text-center text-sm font-semibold capitalize">
-                                {monthLabel}
-                            </span>
+                            <span className="min-w-20 text-center text-sm font-semibold capitalize">{monthLabel}</span>
                             <Button
                                 variant="ghost"
                                 size="icon"
@@ -332,35 +303,18 @@ export default function ActualIndex({ year, month, categories, entries, budgetEn
                                 <ChevronRight className="size-4" />
                             </Button>
                         </div>
-
-                        <Button
-                            onClick={handleSave}
-                            disabled={!dirty || processing}
-                            className="gap-2"
-                        >
-                            <Save className="size-4" />
-                            Salva
-                        </Button>
                     </div>
                 </div>
 
                 {/* Summary cards */}
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                    <SummaryCard
-                        label="Entrate Budget"
-                        value={allIncomeBudget}
-                        variant="neutral"
-                    />
+                    <SummaryCard label="Entrate Budget" value={allIncomeBudget} variant="neutral" />
                     <SummaryCard
                         label="Entrate Effettive"
                         value={allIncomeActual}
                         variant={allIncomeActual >= allIncomeBudget ? 'positive' : 'negative'}
                     />
-                    <SummaryCard
-                        label="Uscite Budget"
-                        value={allExpenseBudget}
-                        variant="neutral"
-                    />
+                    <SummaryCard label="Uscite Budget" value={allExpenseBudget} variant="neutral" />
                     <SummaryCard
                         label="Uscite Effettive"
                         value={allExpenseActual}
@@ -370,24 +324,14 @@ export default function ActualIndex({ year, month, categories, entries, budgetEn
 
                 {/* Main table */}
                 <div className="rounded-lg border bg-card shadow-xs">
-                    <Table>
+                    <Table className="text-xs">
                         <TableHeader>
-                            <TableRow className="bg-muted/40 hover:bg-muted/40">
-                                <TableHead className="min-w-44 pl-3 font-semibold">
-                                    Categoria
-                                </TableHead>
-                                <TableHead className="min-w-32 text-right font-semibold">
-                                    Budget
-                                </TableHead>
-                                <TableHead className="min-w-32 text-right font-semibold">
-                                    Effettivo
-                                </TableHead>
-                                <TableHead className="min-w-28 text-right font-semibold">
-                                    Scostamento
-                                </TableHead>
-                                <TableHead className="min-w-48 font-semibold">
-                                    Causale
-                                </TableHead>
+                            <TableRow className="bg-muted hover:bg-muted/40">
+                                <TableHead className="min-w-44 pl-3 font-semibold">Categoria</TableHead>
+                                <TableHead className="min-w-32 text-right font-semibold">Budget</TableHead>
+                                <TableHead className="min-w-32 text-right font-semibold">Effettivo</TableHead>
+                                <TableHead className="min-w-28 text-right font-semibold">Scostamento</TableHead>
+                                <TableHead className="min-w-48 font-semibold">Causale</TableHead>
                             </TableRow>
                         </TableHeader>
 
@@ -401,14 +345,12 @@ export default function ActualIndex({ year, month, categories, entries, budgetEn
                                     rowState={form[cat.id] ?? { amount: '', description: '' }}
                                     budgetEntry={budgetEntries[cat.id]}
                                     onChange={handleChange}
+                                    onBlur={handleRowBlur}
                                 />
                             ))}
                             {incomeCategories.length === 0 && (
                                 <TableRow>
-                                    <TableCell
-                                        colSpan={5}
-                                        className="py-4 text-center text-sm text-muted-foreground"
-                                    >
+                                    <TableCell colSpan={5} className="py-4 text-center text-xs text-muted-foreground">
                                         Nessuna categoria di entrata
                                     </TableCell>
                                 </TableRow>
@@ -430,14 +372,12 @@ export default function ActualIndex({ year, month, categories, entries, budgetEn
                                     rowState={form[cat.id] ?? { amount: '', description: '' }}
                                     budgetEntry={budgetEntries[cat.id]}
                                     onChange={handleChange}
+                                    onBlur={handleRowBlur}
                                 />
                             ))}
                             {expenseCategories.length === 0 && (
                                 <TableRow>
-                                    <TableCell
-                                        colSpan={5}
-                                        className="py-4 text-center text-sm text-muted-foreground"
-                                    >
+                                    <TableCell colSpan={5} className="py-4 text-center text-xs text-muted-foreground">
                                         Nessuna categoria di uscita
                                     </TableCell>
                                 </TableRow>
@@ -453,10 +393,8 @@ export default function ActualIndex({ year, month, categories, entries, budgetEn
 
                         <TableFooter>
                             <TableRow className="hover:bg-muted/50">
-                                <TableCell className="py-2.5 pl-3 text-sm font-bold">
-                                    Saldo Netto
-                                </TableCell>
-                                <TableCell className="py-2.5 text-right text-sm font-bold tabular-nums">
+                                <TableCell className="py-1.5 pl-3 text-xs font-bold">Saldo Netto</TableCell>
+                                <TableCell className="py-1.5 text-right text-xs font-bold tabular-nums">
                                     {netBudget !== 0 ? (
                                         <span
                                             className={cn(
@@ -470,7 +408,7 @@ export default function ActualIndex({ year, month, categories, entries, budgetEn
                                         <span className="text-muted-foreground">—</span>
                                     )}
                                 </TableCell>
-                                <TableCell className="py-2.5 text-right text-sm font-bold tabular-nums">
+                                <TableCell className="py-1.5 text-right text-xs font-bold tabular-nums">
                                     {netActual !== 0 ? (
                                         <span
                                             className={cn(
@@ -484,24 +422,14 @@ export default function ActualIndex({ year, month, categories, entries, budgetEn
                                         <span className="text-muted-foreground">—</span>
                                     )}
                                 </TableCell>
-                                <TableCell className="py-2.5 text-right text-sm font-bold">
-                                    <VarianceCell
-                                        actual={netActual}
-                                        budget={netBudget}
-                                        type="income"
-                                    />
+                                <TableCell className="py-1.5 text-right text-xs font-bold">
+                                    <VarianceCell actual={netActual} budget={netBudget} type="income" />
                                 </TableCell>
                                 <TableCell />
                             </TableRow>
                         </TableFooter>
                     </Table>
                 </div>
-
-                {dirty && (
-                    <p className="text-right text-xs text-muted-foreground">
-                        Hai modifiche non salvate. Premi &quot;Salva&quot; per confermare.
-                    </p>
-                )}
             </div>
         </AppLayout>
     );
@@ -514,9 +442,10 @@ interface ActualRowProps {
     rowState: RowState;
     budgetEntry: BudgetEntry | undefined;
     onChange: (catId: number, field: keyof RowState, value: string) => void;
+    onBlur: (catId: number) => void;
 }
 
-function ActualRow({ category, rowState, budgetEntry, onChange }: ActualRowProps) {
+function ActualRow({ category, rowState, budgetEntry, onChange, onBlur }: ActualRowProps) {
     const budgetAmount = parseAmount(budgetEntry?.amount ?? '0');
     const actualAmount = parseAmount(rowState.amount);
 
@@ -525,13 +454,13 @@ function ActualRow({ category, rowState, budgetEntry, onChange }: ActualRowProps
             <TableCell className="py-1.5 pl-3">
                 <div className="flex items-center">
                     <CategoryColorDot color={category.color} />
-                    <span className="text-sm font-medium">{category.name}</span>
+                    <span className="text-xs font-medium">{category.name}</span>
                 </div>
             </TableCell>
 
             {/* Budget reference (read-only) */}
             <TableCell className="py-1.5 text-right">
-                <span className="text-sm tabular-nums text-muted-foreground">
+                <span className="text-xs text-muted-foreground tabular-nums">
                     {budgetAmount !== 0 ? formatCurrency(budgetAmount) : <span>—</span>}
                 </span>
             </TableCell>
@@ -543,20 +472,17 @@ function ActualRow({ category, rowState, budgetEntry, onChange }: ActualRowProps
                     inputMode="decimal"
                     value={rowState.amount}
                     onChange={(e) => onChange(category.id, 'amount', e.target.value)}
+                    onBlur={() => onBlur(category.id)}
                     onFocus={(e) => e.target.select()}
-                    className="h-8 text-right tabular-nums"
+                    className="h-7 text-right text-xs tabular-nums"
                     placeholder="0,00"
                     aria-label={`Effettivo ${category.name}`}
                 />
             </TableCell>
 
             {/* Variance */}
-            <TableCell className="py-1.5 text-right text-sm">
-                <VarianceCell
-                    actual={actualAmount}
-                    budget={budgetAmount}
-                    type={category.type}
-                />
+            <TableCell className="py-1.5 text-right text-xs">
+                <VarianceCell actual={actualAmount} budget={budgetAmount} type={category.type} />
             </TableCell>
 
             {/* Description / Causale */}
@@ -565,7 +491,8 @@ function ActualRow({ category, rowState, budgetEntry, onChange }: ActualRowProps
                     type="text"
                     value={rowState.description}
                     onChange={(e) => onChange(category.id, 'description', e.target.value)}
-                    className="h-8"
+                    onBlur={() => onBlur(category.id)}
+                    className="h-7 text-xs"
                     placeholder="Causale..."
                     aria-label={`Causale ${category.name}`}
                 />
@@ -586,7 +513,7 @@ function SummaryCard({ label, value, variant }: SummaryCardProps) {
             <p className="text-xs font-medium text-muted-foreground">{label}</p>
             <p
                 className={cn(
-                    'mt-1 text-xl font-bold tabular-nums tracking-tight',
+                    'mt-1 text-xl font-bold tracking-tight tabular-nums',
                     variant === 'positive' && 'text-emerald-600 dark:text-emerald-400',
                     variant === 'negative' && 'text-destructive',
                     variant === 'neutral' && 'text-foreground',

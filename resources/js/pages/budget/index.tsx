@@ -1,17 +1,10 @@
-import { Head, router, useForm } from '@inertiajs/react';
-import { ChevronLeft, ChevronRight, Save } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { Head, router } from '@inertiajs/react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableFooter,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from '@/components/ui/table';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
 import { cn, formatCurrency } from '@/lib/utils';
 
@@ -33,18 +26,16 @@ interface Props {
     year: number;
     categories: Category[];
     entries: Record<number, Record<number, EntryData>>;
+    invoicedCategoryIds: number[];
+    limiteFatturato: number;
 }
 
 const MONTHS = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
 
-// cell state: keyed by `${categoryId}-${month}`
 type CellKey = `${number}-${number}`;
 type CellState = Record<CellKey, string>;
 
-function buildInitialCells(
-    categories: Category[],
-    entries: Record<number, Record<number, EntryData>>,
-): CellState {
+function buildInitialCells(categories: Category[], entries: Record<number, Record<number, EntryData>>): CellState {
     const cells: CellState = {};
     for (const cat of categories) {
         for (let m = 1; m <= 12; m++) {
@@ -87,7 +78,7 @@ function TypeGroupHeaderRow({ label, colSpan }: TypeGroupHeaderRowProps) {
         <TableRow className="bg-muted/60 hover:bg-muted/60">
             <TableCell
                 colSpan={colSpan}
-                className="py-2 pl-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                className="py-1.5 pl-3 text-[10px] font-semibold tracking-wider text-muted-foreground uppercase"
             >
                 {label}
             </TableCell>
@@ -103,10 +94,8 @@ interface TotalsRowProps {
 
 function TotalsRow({ label, categories, cells }: TotalsRowProps) {
     return (
-        <TableRow className="bg-muted/30 font-semibold hover:bg-muted/30">
-            <TableCell className="sticky left-0 z-10 bg-muted/30 py-2 pl-3 text-sm">
-                {label}
-            </TableCell>
+        <TableRow className="bg-card font-semibold hover:bg-card">
+            <TableCell className="sticky left-0 z-10 bg-card py-1.5 pl-3 text-xs">{label}</TableCell>
             {MONTHS.map((_, idx) => {
                 const month = idx + 1;
                 const total = categories.reduce((sum, cat) => {
@@ -114,7 +103,7 @@ function TotalsRow({ label, categories, cells }: TotalsRowProps) {
                     return sum + parseAmount(cells[key] ?? '');
                 }, 0);
                 return (
-                    <TableCell key={month} className="py-2 text-right text-sm tabular-nums">
+                    <TableCell key={month} className="py-1.5 text-right text-xs tabular-nums">
                         {total !== 0 ? formatCurrency(total) : <span className="text-muted-foreground">—</span>}
                     </TableCell>
                 );
@@ -123,76 +112,91 @@ function TotalsRow({ label, categories, cells }: TotalsRowProps) {
     );
 }
 
-export default function BudgetIndex({ year, categories, entries }: Props) {
+export default function BudgetIndex({ year, categories, entries, invoicedCategoryIds, limiteFatturato }: Props) {
     const [cells, setCells] = useState<CellState>(() => buildInitialCells(categories, entries));
-    const [dirty, setDirty] = useState(false);
+    const initialCellsRef = useRef<CellState>(buildInitialCells(categories, entries));
 
-    // Reset when year/entries change (navigation)
     useEffect(() => {
-        setCells(buildInitialCells(categories, entries));
-        setDirty(false);
+        const initial = buildInitialCells(categories, entries);
+        setCells(initial);
+        initialCellsRef.current = initial;
     }, [year, categories, entries]);
-
-    const { post, processing } = useForm();
 
     const handleCellChange = useCallback((catId: number, month: number, value: string) => {
         const key: CellKey = `${catId}-${month}`;
         setCells((prev) => ({ ...prev, [key]: value }));
-        setDirty(true);
     }, []);
 
-    const handleSave = () => {
-        const payload: Array<{ category_id: number; month: number; amount: string | null; notes: string | null }> = [];
+    const handleCellBlur = useCallback(
+        (catId: number, month: number) => {
+            const key: CellKey = `${catId}-${month}`;
+            const currentValue = cells[key] ?? '';
+            const initialValue = initialCellsRef.current[key] ?? '';
 
-        for (const cat of categories) {
-            for (let m = 1; m <= 12; m++) {
-                const key: CellKey = `${cat.id}-${m}`;
-                const rawValue = cells[key] ?? '';
-                const existingEntry = entries[cat.id]?.[m];
+            if (currentValue === initialValue) return;
 
-                // Only include cells that have a value or had an existing entry
-                if (rawValue !== '' || existingEntry) {
-                    const amount = rawValue !== '' ? String(parseAmount(rawValue)) : null;
-                    payload.push({
-                        category_id: cat.id,
-                        month: m,
-                        amount,
-                        notes: existingEntry?.notes ?? null,
-                    });
-                }
-            }
-        }
+            const amount = currentValue !== '' ? String(parseAmount(currentValue)) : null;
+            if (amount === null || amount === '0') return;
 
-        // useForm doesn't support dynamic data well here; use router.post directly
-        router.post(
-            '/budget/bulk',
-            { year, entries: payload },
-            {
-                preserveScroll: true,
-                onSuccess: () => setDirty(false),
-            },
-        );
-    };
+            const existingEntry = entries[catId]?.[month];
+
+            router.post(
+                '/budget/bulk',
+                {
+                    year,
+                    entries: [
+                        {
+                            category_id: catId,
+                            month,
+                            amount,
+                            notes: existingEntry?.notes ?? null,
+                        },
+                    ],
+                },
+                {
+                    preserveScroll: true,
+                    onSuccess: () => {
+                        initialCellsRef.current[key] = currentValue;
+                        toast.success('Salvato');
+                    },
+                    onError: () => {
+                        toast.error('Errore durante il salvataggio');
+                    },
+                },
+            );
+        },
+        [cells, entries, year],
+    );
 
     const navigateYear = (delta: number) => {
         router.get('/budget', { year: year + delta }, { preserveScroll: false });
     };
 
-    const incomeCategories = categories
-        .filter((c) => c.type === 'income')
-        .sort((a, b) => a.sort_order - b.sort_order);
+    const incomeCategories = categories.filter((c) => c.type === 'income').sort((a, b) => a.sort_order - b.sort_order);
 
     const expenseCategories = categories
         .filter((c) => c.type === 'expense')
         .sort((a, b) => a.sort_order - b.sort_order);
 
-    const totalColumns = 13; // category name + 12 months
+    const totalColumns = 13;
+
+    // Compute invoiced budget total from current cell values
+    const invoicedBudgetTotal = invoicedCategoryIds.reduce((total, catId) => {
+        for (let m = 1; m <= 12; m++) {
+            const key: CellKey = `${catId}-${m}`;
+            total += parseAmount(cells[key] ?? '');
+        }
+        return total;
+    }, 0);
+
+    const invoicePercentage = limiteFatturato > 0 ? (invoicedBudgetTotal / limiteFatturato) * 100 : 0;
+    const isOverLimit = invoicedBudgetTotal > limiteFatturato && limiteFatturato > 0;
 
     return (
         <AppLayout>
             <Head title="Budget Previsionale" />
 
-            <div className="space-y-6">
+            <div className="flex h-[calc(100vh-8rem)] flex-col gap-4">
                 {/* Page header */}
                 <div className="flex flex-wrap items-center justify-between gap-4">
                     <div>
@@ -202,56 +206,75 @@ export default function BudgetIndex({ year, categories, entries }: Props) {
                         </p>
                     </div>
 
-                    <div className="flex items-center gap-3">
-                        {/* Year selector */}
-                        <div className="flex items-center gap-1 rounded-lg border bg-card px-1 py-1">
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className="size-8"
-                                onClick={() => navigateYear(-1)}
-                                aria-label="Anno precedente"
-                            >
-                                <ChevronLeft className="size-4" />
-                            </Button>
-                            <span className="min-w-12 text-center text-sm font-semibold tabular-nums">
-                                {year}
-                            </span>
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className="size-8"
-                                onClick={() => navigateYear(1)}
-                                aria-label="Anno successivo"
-                            >
-                                <ChevronRight className="size-4" />
-                            </Button>
-                        </div>
-
+                    {/* Year selector */}
+                    <div className="flex items-center gap-1 rounded-lg border bg-card px-1 py-1">
                         <Button
-                            onClick={handleSave}
-                            disabled={!dirty || processing}
-                            className="gap-2"
+                            variant="ghost"
+                            size="icon"
+                            className="size-8"
+                            onClick={() => navigateYear(-1)}
+                            aria-label="Anno precedente"
                         >
-                            <Save className="size-4" />
-                            Salva
+                            <ChevronLeft className="size-4" />
+                        </Button>
+                        <span className="min-w-12 text-center text-sm font-semibold tabular-nums">{year}</span>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8"
+                            onClick={() => navigateYear(1)}
+                            aria-label="Anno successivo"
+                        >
+                            <ChevronRight className="size-4" />
                         </Button>
                     </div>
                 </div>
 
+                {/* Invoice limit progress */}
+                {limiteFatturato > 0 && (
+                    <div className="rounded-lg border bg-card p-4 shadow-xs">
+                        <div className="flex items-center justify-between text-sm">
+                            <span className="font-medium">Fatturato budget</span>
+                            <span
+                                className={cn(
+                                    'font-semibold tabular-nums',
+                                    isOverLimit ? 'text-destructive' : 'text-foreground',
+                                )}
+                            >
+                                {formatCurrency(invoicedBudgetTotal)} / {formatCurrency(limiteFatturato)}
+                            </span>
+                        </div>
+                        <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-muted">
+                            <div
+                                className={cn(
+                                    'h-full rounded-full transition-all',
+                                    isOverLimit
+                                        ? 'bg-destructive'
+                                        : invoicePercentage > 80
+                                          ? 'bg-amber-500'
+                                          : 'bg-emerald-500',
+                                )}
+                                style={{ width: `${Math.min(invoicePercentage, 100)}%` }}
+                            />
+                        </div>
+                        {isOverLimit && (
+                            <p className="mt-1.5 text-xs font-medium text-destructive">
+                                Superato del {formatCurrency(invoicedBudgetTotal - limiteFatturato)}
+                            </p>
+                        )}
+                    </div>
+                )}
+
                 {/* Spreadsheet table */}
-                <div className="rounded-lg border bg-card shadow-xs">
-                    <Table className="table-fixed">
-                        <TableHeader>
+                <div className="min-h-0 flex-1 rounded-lg border bg-card shadow-xs [&_[data-slot=table-container]]:h-full [&_[data-slot=table-container]]:overflow-auto">
+                    <Table className="table-fixed text-xs">
+                        <TableHeader className="sticky top-0 z-30 bg-muted">
                             <TableRow className="bg-muted/40 hover:bg-muted/40">
-                                <TableHead className="sticky left-0 z-20 w-[14%] bg-muted/40 pl-3 font-semibold">
+                                <TableHead className="sticky left-0 z-40 w-[14%] bg-muted/40 pl-3 font-semibold">
                                     Categoria
                                 </TableHead>
                                 {MONTHS.map((month) => (
-                                    <TableHead
-                                        key={month}
-                                        className="w-[7.16%] text-center font-semibold"
-                                    >
+                                    <TableHead key={month} className="w-[7.16%] text-center font-semibold">
                                         {month}
                                     </TableHead>
                                 ))}
@@ -267,6 +290,7 @@ export default function BudgetIndex({ year, categories, entries }: Props) {
                                     category={cat}
                                     cells={cells}
                                     onChange={handleCellChange}
+                                    onBlur={handleCellBlur}
                                 />
                             ))}
                             {incomeCategories.length === 0 && (
@@ -279,11 +303,7 @@ export default function BudgetIndex({ year, categories, entries }: Props) {
                                     </TableCell>
                                 </TableRow>
                             )}
-                            <TotalsRow
-                                label="Totale Entrate"
-                                categories={incomeCategories}
-                                cells={cells}
-                            />
+                            <TotalsRow label="Totale Entrate" categories={incomeCategories} cells={cells} />
 
                             {/* Expense group */}
                             <TypeGroupHeaderRow label="Uscite" colSpan={totalColumns} />
@@ -293,6 +313,7 @@ export default function BudgetIndex({ year, categories, entries }: Props) {
                                     category={cat}
                                     cells={cells}
                                     onChange={handleCellChange}
+                                    onBlur={handleCellBlur}
                                 />
                             ))}
                             {expenseCategories.length === 0 && (
@@ -305,28 +326,18 @@ export default function BudgetIndex({ year, categories, entries }: Props) {
                                     </TableCell>
                                 </TableRow>
                             )}
-                            <TotalsRow
-                                label="Totale Uscite"
-                                categories={expenseCategories}
-                                cells={cells}
-                            />
                         </TableBody>
 
-                        <TableFooter>
+                        <tfoot className="sticky bottom-0 z-20 border-t bg-card font-medium">
+                            <TotalsRow label="Totale Uscite" categories={expenseCategories} cells={cells} />
                             <NetRow
                                 incomeCategories={incomeCategories}
                                 expenseCategories={expenseCategories}
                                 cells={cells}
                             />
-                        </TableFooter>
+                        </tfoot>
                     </Table>
                 </div>
-
-                {dirty && (
-                    <p className="text-right text-xs text-muted-foreground">
-                        Hai modifiche non salvate. Premi &quot;Salva&quot; per confermare.
-                    </p>
-                )}
             </div>
         </AppLayout>
     );
@@ -338,15 +349,16 @@ interface BudgetRowProps {
     category: Category;
     cells: CellState;
     onChange: (catId: number, month: number, value: string) => void;
+    onBlur: (catId: number, month: number) => void;
 }
 
-function BudgetRow({ category, cells, onChange }: BudgetRowProps) {
+function BudgetRow({ category, cells, onChange, onBlur }: BudgetRowProps) {
     return (
         <TableRow className="group">
             <TableCell className="sticky left-0 z-10 bg-card py-1.5 pl-3 group-hover:bg-muted/50">
                 <div className="flex items-center">
                     <CategoryColorDot color={category.color} />
-                    <span className="text-sm font-medium">{category.name}</span>
+                    <span className="text-xs font-medium">{category.name}</span>
                 </div>
             </TableCell>
             {MONTHS.map((_, idx) => {
@@ -359,8 +371,9 @@ function BudgetRow({ category, cells, onChange }: BudgetRowProps) {
                             inputMode="decimal"
                             value={cells[key] ?? ''}
                             onChange={(e) => onChange(category.id, month, e.target.value)}
+                            onBlur={() => onBlur(category.id, month)}
                             onFocus={(e) => e.target.select()}
-                            className="h-8 w-full text-right tabular-nums"
+                            className="h-7 w-full text-right text-xs tabular-nums"
                             placeholder="0,00"
                             aria-label={`${category.name} - ${MONTHS[idx]}`}
                         />
@@ -379,10 +392,8 @@ interface NetRowProps {
 
 function NetRow({ incomeCategories, expenseCategories, cells }: NetRowProps) {
     return (
-        <TableRow className="hover:bg-muted/50">
-            <TableCell className="sticky left-0 z-10 bg-muted/50 py-2 pl-3 text-sm font-bold">
-                Saldo Netto
-            </TableCell>
+        <TableRow className="bg-card hover:bg-card">
+            <TableCell className="sticky left-0 z-10 bg-card py-1.5 pl-3 text-xs font-bold">Saldo Netto</TableCell>
             {MONTHS.map((_, idx) => {
                 const month = idx + 1;
                 const income = incomeCategories.reduce((sum, cat) => {
@@ -398,7 +409,7 @@ function NetRow({ incomeCategories, expenseCategories, cells }: NetRowProps) {
                     <TableCell
                         key={month}
                         className={cn(
-                            'py-2 text-right text-sm font-bold tabular-nums',
+                            'py-1.5 text-right text-xs font-bold tabular-nums',
                             net > 0 && 'text-emerald-600 dark:text-emerald-400',
                             net < 0 && 'text-destructive',
                             net === 0 && 'text-muted-foreground',

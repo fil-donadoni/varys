@@ -3,14 +3,7 @@ import { Check, Pencil, Plus, Trash2 } from 'lucide-react';
 import AppLayout from '@/layouts/app-layout';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from '@/components/ui/table';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 interface Category {
     id: number;
@@ -47,7 +40,7 @@ export default function CategoriesIndex({ categories, types }: Props) {
             <section aria-labelledby={`group-${title}`} className="space-y-2">
                 <h2
                     id={`group-${title}`}
-                    className="text-sm font-semibold uppercase tracking-wide text-muted-foreground"
+                    className="text-sm font-semibold tracking-wide text-muted-foreground uppercase"
                 >
                     {title}
                 </h2>
@@ -57,9 +50,7 @@ export default function CategoriesIndex({ categories, types }: Props) {
                             <TableRow>
                                 <TableHead className="w-12">Colore</TableHead>
                                 <TableHead>Nome</TableHead>
-                                <TableHead>Tipo</TableHead>
                                 {isIncome && <TableHead className="w-24 text-center">Fatturata</TableHead>}
-                                <TableHead className="w-32 text-right">Ordine</TableHead>
                                 <TableHead className="w-28 text-right">Azioni</TableHead>
                             </TableRow>
                         </TableHeader>
@@ -76,17 +67,6 @@ export default function CategoriesIndex({ categories, types }: Props) {
                                         />
                                     </TableCell>
                                     <TableCell className="font-medium">{category.name}</TableCell>
-                                    <TableCell>
-                                        <Badge
-                                            variant={
-                                                category.type === 'income'
-                                                    ? 'default'
-                                                    : 'secondary'
-                                            }
-                                        >
-                                            {TYPE_LABEL[category.type] ?? category.type}
-                                        </Badge>
-                                    </TableCell>
                                     {isIncome && (
                                         <TableCell className="text-center">
                                             {category.is_invoiced && (
@@ -94,9 +74,6 @@ export default function CategoriesIndex({ categories, types }: Props) {
                                             )}
                                         </TableCell>
                                     )}
-                                    <TableCell className="text-right tabular-nums text-muted-foreground">
-                                        {category.sort_order}
-                                    </TableCell>
                                     <TableCell className="text-right">
                                         <div className="flex items-center justify-end gap-1">
                                             <Button
@@ -137,9 +114,7 @@ export default function CategoriesIndex({ categories, types }: Props) {
                 <div className="flex items-center justify-between">
                     <div>
                         <h1 className="text-2xl font-bold tracking-tight">Categorie</h1>
-                        <p className="text-sm text-muted-foreground">
-                            Gestisci le categorie di entrate e uscite.
-                        </p>
+                        <p className="text-sm text-muted-foreground">Gestisci le categorie di entrate e uscite.</p>
                     </div>
                     <Button asChild>
                         <Link href="/categories/create">
@@ -160,10 +135,10 @@ export default function CategoriesIndex({ categories, types }: Props) {
                         </Button>
                     </div>
                 ) : (
-                    <>
+                    <div className="grid gap-8 lg:grid-cols-2">
                         {renderGroup('Entrate', income, true)}
                         {renderGroup('Uscite', expense)}
-                    </>
+                    </div>
                 )}
             </div>
         </AppLayout>
