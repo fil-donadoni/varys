@@ -56,18 +56,26 @@ class ActualEntryController extends Controller
         $entries = $validated['entries'];
 
         foreach ($entries as $entry) {
-            ActualEntry::updateOrCreate(
-                [
-                    'category_id' => $entry['category_id'],
-                    'year' => $validated['year'],
-                    'month' => $validated['month'],
-                ],
-                [
-                    'amount' => $entry['amount'],
-                    'description' => $entry['description'] ?? null,
-                    'notes' => $entry['notes'] ?? null,
-                ],
-            );
+            if ((float) $entry['amount'] === 0.0) {
+                ActualEntry::query()
+                    ->where('category_id', $entry['category_id'])
+                    ->where('year', $validated['year'])
+                    ->where('month', $validated['month'])
+                    ->delete();
+            } else {
+                ActualEntry::updateOrCreate(
+                    [
+                        'category_id' => $entry['category_id'],
+                        'year' => $validated['year'],
+                        'month' => $validated['month'],
+                    ],
+                    [
+                        'amount' => $entry['amount'],
+                        'description' => $entry['description'] ?? null,
+                        'notes' => $entry['notes'] ?? null,
+                    ],
+                );
+            }
         }
 
         return redirect()->route('actual.index', ['year' => $validated['year'], 'month' => $validated['month']])

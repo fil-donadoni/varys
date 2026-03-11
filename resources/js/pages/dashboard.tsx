@@ -57,18 +57,26 @@ interface DashboardProps {
 
 const ITALIAN_MONTHS_SHORT = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
 
-function VarianceBadge({ budget, actual }: { budget: number; actual: number }) {
+function VarianceBadge({
+    budget,
+    actual,
+    type = 'income',
+}: {
+    budget: number;
+    actual: number;
+    type?: 'income' | 'expense';
+}) {
     const variance = actual - budget;
-    const isPositive = variance >= 0;
+    const favorable = type === 'income' ? variance >= 0 : variance <= 0;
     return (
         <Badge
             className={
-                isPositive
+                favorable
                     ? 'border-transparent bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
                     : 'border-transparent bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'
             }
         >
-            {isPositive ? '+' : ''}
+            {variance > 0 ? '+' : ''}
             {formatCurrency(variance)}
         </Badge>
     );
@@ -302,7 +310,7 @@ export default function Dashboard({
                                 </p>
                                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                     <span>Budget: {formatCurrency(totalBudgetExpense)}</span>
-                                    <VarianceBadge budget={totalBudgetExpense} actual={totalEffectiveExpense} />
+                                    <VarianceBadge budget={totalBudgetExpense} actual={totalEffectiveExpense} type="expense" />
                                 </div>
                                 {actualMonths.length < 12 && (
                                     <p className="text-[10px] text-muted-foreground">
@@ -314,7 +322,9 @@ export default function Dashboard({
 
                         <Card>
                             <CardHeader>
-                                <CardTitle className="text-sm font-medium text-muted-foreground">Saldo Netto</CardTitle>
+                                <CardTitle className="text-sm font-medium text-muted-foreground">
+                                    Saldo Netto a fine anno
+                                </CardTitle>
                             </CardHeader>
                             <CardContent className="space-y-1">
                                 <p

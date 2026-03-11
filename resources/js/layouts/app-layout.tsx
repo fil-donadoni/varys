@@ -1,5 +1,5 @@
 import { Link, usePage } from '@inertiajs/react';
-import { BarChart3, Euro, FolderOpen, ReceiptEuro, Settings } from 'lucide-react';
+import { BarChart3, Euro, FolderOpen, ReceiptEuro, Scale, Settings } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Toaster } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -13,6 +13,7 @@ const navigation = [
     { name: 'Budget', href: '/budget', icon: Euro },
     { name: 'Consuntivo', href: '/actual', icon: ReceiptEuro },
     { name: 'Categorie', href: '/categories', icon: FolderOpen },
+    { name: 'Riconciliazione', href: '/reconciliations', icon: Scale },
     { name: 'Impostazioni', href: '/settings', icon: Settings },
 ];
 

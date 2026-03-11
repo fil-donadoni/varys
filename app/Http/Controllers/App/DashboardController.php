@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ActualEntry;
 use App\Models\BudgetEntry;
 use App\Models\Category;
+use App\Models\Reconciliation;
 use App\Models\Setting;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -63,7 +64,7 @@ class DashboardController extends Controller
                 }
             }
 
-            $hasActual = $actualEntries->contains('month', $month);
+            $hasActual = $actualEntries->where('month', $month)->contains(fn (ActualEntry $e): bool => (float) $e->amount > 0);
 
             $monthlyData[] = [
                 'month' => $month,
@@ -134,6 +135,13 @@ class DashboardController extends Controller
         }
 
         $openingBalance = (float) Setting::getValue('opening_balance', '0');
+
+        // Load reconciliation adjustments for this year, keyed by month
+        $reconciliations = Reconciliation::query()
+            ->where('year', $year)
+            ->get()
+            ->keyBy('month');
+
         $cumulativeBudget = $openingBalance;
         $cumulativeActual = $openingBalance;
         foreach ($monthlyData as &$data) {
@@ -146,6 +154,19 @@ class DashboardController extends Controller
             } else {
                 $cumulativeActual += $data['budget_balance'];
                 $data['cumulative_actual'] = null;
+            }
+
+            // Apply reconciliation adjustment at end of this month
+            $reconciliation = $reconciliations->get($data['month']);
+            if ($reconciliation) {
+                $adj = (float) $reconciliation->adjustment;
+                $cumulativeBudget += $adj;
+                $cumulativeActual += $adj;
+                $data['cumulative_budget'] = round($cumulativeBudget, 2);
+                if ($data['cumulative_actual'] !== null) {
+                    $data['cumulative_actual'] = round($cumulativeActual, 2);
+                }
+                $data['reconciliation_adjustment'] = $adj;
             }
         }
         unset($data);

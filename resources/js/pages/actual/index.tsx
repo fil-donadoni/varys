@@ -171,10 +171,11 @@ export default function ActualIndex({ year, month, categories, entries, budgetEn
                 return;
             }
 
-            const amount = currentRow?.amount !== '' ? String(parseAmount(currentRow?.amount ?? '')) : null;
-            if (amount === null || amount === '0') return;
-
+            const amount = String(parseAmount(currentRow?.amount ?? ''));
             const existingEntry = entries[catId];
+
+            // Nothing to save if empty and no existing entry
+            if (amount === '0' && !existingEntry) return;
 
             router.post(
                 '/actual/bulk',
@@ -313,12 +314,16 @@ export default function ActualIndex({ year, month, categories, entries, budgetEn
                         label="Entrate Effettive"
                         value={allIncomeActual}
                         variant={allIncomeActual >= allIncomeBudget ? 'positive' : 'negative'}
+                        diff={allIncomeActual - allIncomeBudget}
+                        diffType="income"
                     />
                     <SummaryCard label="Uscite Budget" value={allExpenseBudget} variant="neutral" />
                     <SummaryCard
                         label="Uscite Effettive"
                         value={allExpenseActual}
                         variant={allExpenseActual <= allExpenseBudget ? 'positive' : 'negative'}
+                        diff={allExpenseActual - allExpenseBudget}
+                        diffType="expense"
                     />
                 </div>
 
@@ -505,9 +510,14 @@ interface SummaryCardProps {
     label: string;
     value: number;
     variant: 'positive' | 'negative' | 'neutral';
+    diff?: number;
+    diffType?: 'income' | 'expense';
 }
 
-function SummaryCard({ label, value, variant }: SummaryCardProps) {
+function SummaryCard({ label, value, variant, diff, diffType }: SummaryCardProps) {
+    const showDiff = diff !== undefined && diffType !== undefined && value !== 0;
+    const favorable = showDiff && ((diffType === 'income' && diff >= 0) || (diffType === 'expense' && diff <= 0));
+
     return (
         <div className="rounded-lg border bg-card p-4 shadow-xs">
             <p className="text-xs font-medium text-muted-foreground">{label}</p>
@@ -521,6 +531,17 @@ function SummaryCard({ label, value, variant }: SummaryCardProps) {
             >
                 {formatCurrency(value)}
             </p>
+            {showDiff && diff !== 0 && (
+                <p
+                    className={cn(
+                        'mt-0.5 text-xs font-medium tabular-nums',
+                        favorable ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive',
+                    )}
+                >
+                    {diff > 0 ? '+' : ''}
+                    {formatCurrency(diff)}
+                </p>
+            )}
         </div>
     );
 }

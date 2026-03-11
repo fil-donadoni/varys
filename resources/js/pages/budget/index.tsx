@@ -373,7 +373,7 @@ function BudgetRow({ category, cells, onChange, onBlur }: BudgetRowProps) {
                             onChange={(e) => onChange(category.id, month, e.target.value)}
                             onBlur={() => onBlur(category.id, month)}
                             onFocus={(e) => e.target.select()}
-                            className="h-7 w-full text-right text-xs tabular-nums"
+                            className="h-7 w-full text-right text-xs! tabular-nums"
                             placeholder="0,00"
                             aria-label={`${category.name} - ${MONTHS[idx]}`}
                         />

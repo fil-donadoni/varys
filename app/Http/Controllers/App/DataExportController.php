@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ActualEntry;
 use App\Models\BudgetEntry;
 use App\Models\Category;
+use App\Models\Reconciliation;
 use App\Models\Setting;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\RedirectResponse;
@@ -65,6 +66,19 @@ class DataExportController extends Controller
                 ]),
             ));
 
+            $zip->addFromString('reconciliations.csv', $this->buildCsv(
+                ['id', 'year', 'month', 'declared_balance', 'calculated_balance', 'adjustment', 'notes'],
+                $this->collectRows(Reconciliation::query()->orderBy('id')->get(), fn (Reconciliation $r): array => [
+                    (string) $r->id,
+                    (string) $r->year,
+                    (string) $r->month,
+                    (string) $r->declared_balance,
+                    (string) $r->calculated_balance,
+                    (string) $r->adjustment,
+                    $r->notes ?? '',
+                ]),
+            ));
+
             $zip->addFromString('settings.csv', $this->buildCsv(
                 ['key', 'value'],
                 $this->collectRows(Setting::query()->orderBy('key')->get(), fn (Setting $s): array => [
@@ -113,6 +127,7 @@ class DataExportController extends Controller
         try {
             DB::transaction(function () use ($zip): void {
                 // Order matters: entries depend on categories
+                Reconciliation::query()->delete();
                 ActualEntry::query()->delete();
                 BudgetEntry::query()->delete();
                 Category::query()->delete();
@@ -173,6 +188,24 @@ class DataExportController extends Controller
                     }
                 }
 
+                // Import reconciliations
+                $reconciliationsCsv = $zip->getFromName('reconciliations.csv');
+                if ($reconciliationsCsv !== false) {
+                    foreach ($this->parseCsv($reconciliationsCsv) as $row) {
+                        DB::table('reconciliations')->insert([
+                            'id' => (int) $row['id'],
+                            'year' => (int) $row['year'],
+                            'month' => (int) $row['month'],
+                            'declared_balance' => $row['declared_balance'],
+                            'calculated_balance' => $row['calculated_balance'],
+                            'adjustment' => $row['adjustment'],
+                            'notes' => ($row['notes'] ?? '') !== '' ? $row['notes'] : null,
+                            'created_at' => $now,
+                            'updated_at' => $now,
+                        ]);
+                    }
+                }
+
                 // Import settings
                 $settingsCsv = $zip->getFromName('settings.csv');
                 if ($settingsCsv !== false) {
@@ -185,6 +218,7 @@ class DataExportController extends Controller
                 $this->resetSequence('categories');
                 $this->resetSequence('budget_entries');
                 $this->resetSequence('actual_entries');
+                $this->resetSequence('reconciliations');
             });
         } catch (\Throwable $e) {
             $zip->close();
