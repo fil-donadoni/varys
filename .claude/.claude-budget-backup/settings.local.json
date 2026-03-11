@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/filippo/code/**)",
+      "Bash(composer create-project:*)",
+      "Bash(rmdir /Users/filippo/code/varys && cd /Users/filippo/code && composer create-project laravel/laravel varys --no-interaction 2>&1 | tail -20)",
+      "Bash(mv /Users/filippo/code/varys/.claude /tmp/.claude-varys-backup && rmdir /Users/filippo/code/varys && cd /Users/filippo/code && composer create-project laravel/laravel varys --no-interaction 2>&1 | tail -20)"
+    ]
+  }
+}

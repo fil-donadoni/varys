@@ -1,0 +1,9 @@
+vendor/
+node_modules/
+public/
+bootstrap/ssr/
+resources/js/actions/
+resources/js/routes/
+resources/js/components/ui/*
+*.blade.php
+.claude/
