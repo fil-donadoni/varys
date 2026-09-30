@@ -1,12 +1,13 @@
 import { Head, router } from '@inertiajs/react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ListPlus } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { type BudgetItem, BudgetItemsDialog } from '@/components/shared/budget-items-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
-import { cn, formatCurrency } from '@/lib/utils';
+import { cn, formatCurrency, parseAmount } from '@/lib/utils';
 
 interface Category {
     id: number;
@@ -16,10 +17,25 @@ interface Category {
     sort_order: number;
 }
 
+interface EntryItemData {
+    id: number;
+    description: string;
+    amount: string;
+}
+
 interface EntryData {
     id: number;
     amount: string;
     notes: string | null;
+    items: EntryItemData[];
+}
+
+interface ItemsDialogTarget {
+    category: Category;
+    month: number;
+    /** Increments on every open so the dialog remounts with fresh rows. */
+    session: number;
+    open: boolean;
 }
 
 interface Props {
@@ -31,6 +47,20 @@ interface Props {
 }
 
 const MONTHS = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
+const MONTH_NAMES = [
+    'Gennaio',
+    'Febbraio',
+    'Marzo',
+    'Aprile',
+    'Maggio',
+    'Giugno',
+    'Luglio',
+    'Agosto',
+    'Settembre',
+    'Ottobre',
+    'Novembre',
+    'Dicembre',
+];
 
 type CellKey = `${number}-${number}`;
 type CellState = Record<CellKey, string>;
@@ -45,12 +75,6 @@ function buildInitialCells(categories: Category[], entries: Record<number, Recor
         }
     }
     return cells;
-}
-
-function parseAmount(raw: string): number {
-    const cleaned = raw.replace(',', '.').replace(/[^\d.-]/g, '');
-    const val = parseFloat(cleaned);
-    return isNaN(val) ? 0 : val;
 }
 
 interface CategoryColorDotProps {
@@ -166,6 +190,47 @@ export default function BudgetIndex({ year, categories, entries, invoicedCategor
         },
         [cells, entries, year],
     );
+
+    const [itemsDialogTarget, setItemsDialogTarget] = useState<ItemsDialogTarget | null>(null);
+    const [itemsProcessing, setItemsProcessing] = useState(false);
+
+    const handleOpenItems = useCallback((category: Category, month: number) => {
+        setItemsDialogTarget((prev) => ({ category, month, session: (prev?.session ?? 0) + 1, open: true }));
+    }, []);
+
+    const closeItemsDialog = () => {
+        setItemsDialogTarget((prev) => (prev ? { ...prev, open: false } : prev));
+    };
+
+    const handleSaveItems = (items: BudgetItem[]) => {
+        if (!itemsDialogTarget) return;
+
+        router.put(
+            '/budget/items',
+            {
+                year,
+                month: itemsDialogTarget.month,
+                category_id: itemsDialogTarget.category.id,
+                items: items.map((item) => ({ description: item.description, amount: String(item.amount) })),
+            },
+            {
+                preserveScroll: true,
+                onStart: () => setItemsProcessing(true),
+                onFinish: () => setItemsProcessing(false),
+                onSuccess: () => {
+                    closeItemsDialog();
+                    toast.success('Salvato');
+                },
+                onError: () => {
+                    toast.error('Errore durante il salvataggio');
+                },
+            },
+        );
+    };
+
+    const dialogEntry = itemsDialogTarget
+        ? entries[itemsDialogTarget.category.id]?.[itemsDialogTarget.month]
+        : undefined;
 
     const navigateYear = (delta: number) => {
         router.get('/budget', { year: year + delta }, { preserveScroll: false });
@@ -288,8 +353,10 @@ export default function BudgetIndex({ year, categories, entries, invoicedCategor
                                     key={cat.id}
                                     category={cat}
                                     cells={cells}
+                                    entries={entries[cat.id]}
                                     onChange={handleCellChange}
                                     onBlur={handleCellBlur}
+                                    onOpenItems={handleOpenItems}
                                 />
                             ))}
                             {incomeCategories.length === 0 && (
@@ -311,8 +378,10 @@ export default function BudgetIndex({ year, categories, entries, invoicedCategor
                                     key={cat.id}
                                     category={cat}
                                     cells={cells}
+                                    entries={entries[cat.id]}
                                     onChange={handleCellChange}
                                     onBlur={handleCellBlur}
+                                    onOpenItems={handleOpenItems}
                                 />
                             ))}
                             {expenseCategories.length === 0 && (
@@ -338,6 +407,22 @@ export default function BudgetIndex({ year, categories, entries, invoicedCategor
                     </Table>
                 </div>
             </div>
+
+            {itemsDialogTarget && (
+                <BudgetItemsDialog
+                    key={itemsDialogTarget.session}
+                    open={itemsDialogTarget.open}
+                    onOpenChange={(open) => {
+                        if (!open) closeItemsDialog();
+                    }}
+                    title={`Dettaglio budget · ${itemsDialogTarget.category.name}`}
+                    subtitle={`${MONTH_NAMES[itemsDialogTarget.month - 1]} ${year} — il budget del mese è la somma delle righe.`}
+                    initialItems={dialogEntry?.items ?? []}
+                    initialAmount={cells[`${itemsDialogTarget.category.id}-${itemsDialogTarget.month}`] ?? ''}
+                    processing={itemsProcessing}
+                    onSubmit={handleSaveItems}
+                />
+            )}
         </AppLayout>
     );
 }
@@ -347,11 +432,13 @@ export default function BudgetIndex({ year, categories, entries, invoicedCategor
 interface BudgetRowProps {
     category: Category;
     cells: CellState;
+    entries: Record<number, EntryData> | undefined;
     onChange: (catId: number, month: number, value: string) => void;
     onBlur: (catId: number, month: number) => void;
+    onOpenItems: (category: Category, month: number) => void;
 }
 
-function BudgetRow({ category, cells, onChange, onBlur }: BudgetRowProps) {
+function BudgetRow({ category, cells, entries, onChange, onBlur, onOpenItems }: BudgetRowProps) {
     return (
         <TableRow className="group">
             <TableCell className="sticky left-0 z-10 bg-card py-1.5 pl-3 group-hover:bg-muted/50">
@@ -363,19 +450,63 @@ function BudgetRow({ category, cells, onChange, onBlur }: BudgetRowProps) {
             {MONTHS.map((_, idx) => {
                 const month = idx + 1;
                 const key: CellKey = `${category.id}-${month}`;
+                const items = entries?.[month]?.items ?? [];
+                const label = `${category.name} - ${MONTHS[idx]}`;
+
+                if (items.length > 0) {
+                    const summary = items
+                        .map((item) => `${item.description}: ${formatCurrency(parseAmount(item.amount))}`)
+                        .join('\n');
+                    return (
+                        <TableCell key={month} className="p-1">
+                            <button
+                                type="button"
+                                onClick={() => onOpenItems(category, month)}
+                                className="relative flex h-7 w-full items-center justify-end rounded-md border border-dashed border-primary/40 bg-primary/5 px-3 text-xs tabular-nums hover:bg-primary/10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                                title={summary}
+                                aria-label={`${label}: ${items.length} righe, modifica dettaglio`}
+                            >
+                                <span className="absolute -top-1.5 -left-1.5 z-10 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-1 text-[9px] leading-none font-semibold text-primary-foreground ring-2 ring-card">
+                                    {items.length}
+                                </span>
+                                {cells[key] ?? ''}
+                            </button>
+                        </TableCell>
+                    );
+                }
+
                 return (
                     <TableCell key={month} className="p-1">
-                        <Input
-                            type="text"
-                            inputMode="decimal"
-                            value={cells[key] ?? ''}
-                            onChange={(e) => onChange(category.id, month, e.target.value)}
-                            onBlur={() => onBlur(category.id, month)}
-                            onFocus={(e) => e.target.select()}
-                            className="h-7 w-full text-right text-xs! tabular-nums"
-                            placeholder="0,00"
-                            aria-label={`${category.name} - ${MONTHS[idx]}`}
-                        />
+                        <div className="group/cell relative">
+                            <Input
+                                type="text"
+                                inputMode="decimal"
+                                value={cells[key] ?? ''}
+                                onChange={(e) => onChange(category.id, month, e.target.value)}
+                                onBlur={() => onBlur(category.id, month)}
+                                onFocus={(e) => e.target.select()}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && e.shiftKey) {
+                                        e.preventDefault();
+                                        onOpenItems(category, month);
+                                    }
+                                }}
+                                className="h-7 w-full text-right text-xs! tabular-nums"
+                                placeholder="0,00"
+                                aria-label={label}
+                                title="Maiusc+Invio per scorporare in più righe"
+                            />
+                            <button
+                                type="button"
+                                tabIndex={-1}
+                                onClick={() => onOpenItems(category, month)}
+                                className="absolute top-1/2 left-1 flex size-5 -translate-y-1/2 items-center justify-center rounded-sm text-muted-foreground opacity-0 group-hover/cell:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100"
+                                aria-label={`${label}: scorpora in più righe`}
+                                title="Scorpora in più righe"
+                            >
+                                <ListPlus className="size-3.5" />
+                            </button>
+                        </div>
                     </TableCell>
                 );
             })}

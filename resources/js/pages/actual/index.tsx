@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
-import { cn, formatCurrency, formatMonth } from '@/lib/utils';
+import { cn, formatCurrency, formatMonth, parseAmount } from '@/lib/utils';
 
 interface Category {
     id: number;
@@ -53,12 +53,6 @@ function buildInitialForm(categories: Category[], entries: Record<number, Actual
         };
     }
     return form;
-}
-
-function parseAmount(raw: string): number {
-    const cleaned = raw.replace(',', '.').replace(/[^\d.-]/g, '');
-    const val = parseFloat(cleaned);
-    return isNaN(val) ? 0 : val;
 }
 
 function CategoryColorDot({ color }: { color: string | null }) {

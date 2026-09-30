@@ -15,6 +15,7 @@ Route::resource('categories', CategoryController::class)->except(['show']);
 
 Route::get('budget', [BudgetEntryController::class, 'index'])->name('budget.index');
 Route::post('budget/bulk', [BudgetEntryController::class, 'bulkUpsert'])->name('budget.bulk-upsert');
+Route::put('budget/items', [BudgetEntryController::class, 'syncItems'])->name('budget.sync-items');
 
 Route::get('actual', [ActualEntryController::class, 'index'])->name('actual.index');
 Route::post('actual/bulk', [ActualEntryController::class, 'bulkUpsert'])->name('actual.bulk-upsert');

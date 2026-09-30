@@ -5,11 +5,13 @@ namespace App\Http\Controllers\App;
 use App\Enums\CategoryType;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\App\BulkUpsertBudgetRequest;
+use App\Http\Requests\App\SyncBudgetEntryItemsRequest;
 use App\Models\BudgetEntry;
 use App\Models\Category;
 use App\Models\Setting;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -26,7 +28,7 @@ class BudgetEntryController extends Controller
 
         $entries = BudgetEntry::query()
             ->where('year', $year)
-            ->with('category')
+            ->with(['category', 'items'])
             ->get()
             ->groupBy('category_id')
             ->map(fn ($entries) => $entries->keyBy('month'))
@@ -65,7 +67,7 @@ class BudgetEntryController extends Controller
                 continue;
             }
 
-            BudgetEntry::updateOrCreate(
+            $budgetEntry = BudgetEntry::updateOrCreate(
                 [
                     'category_id' => $entry['category_id'],
                     'year' => $validated['year'],
@@ -76,7 +78,48 @@ class BudgetEntryController extends Controller
                     'notes' => $entry['notes'] ?? null,
                 ],
             );
+
+            $budgetEntry->items()->delete();
         }
+
+        return redirect()->route('budget.index', ['year' => $validated['year']])
+            ->with('success', 'Budget aggiornato con successo.');
+    }
+
+    public function syncItems(SyncBudgetEntryItemsRequest $request): RedirectResponse
+    {
+        $validated = $request->validated();
+
+        /** @var list<array{description: string, amount: float|string}> $items */
+        $items = $validated['items'];
+
+        $attributes = [
+            'category_id' => $validated['category_id'],
+            'year' => $validated['year'],
+            'month' => $validated['month'],
+        ];
+
+        DB::transaction(function () use ($attributes, $items): void {
+            if ($items === []) {
+                BudgetEntry::query()->where($attributes)->delete();
+
+                return;
+            }
+
+            $total = array_reduce($items, fn (float $sum, array $item): float => $sum + (float) $item['amount'], 0.0);
+
+            $budgetEntry = BudgetEntry::updateOrCreate($attributes, ['amount' => round($total, 2)]);
+
+            $budgetEntry->items()->delete();
+
+            foreach ($items as $index => $item) {
+                $budgetEntry->items()->create([
+                    'description' => $item['description'],
+                    'amount' => $item['amount'],
+                    'sort_order' => $index,
+                ]);
+            }
+        });
 
         return redirect()->route('budget.index', ['year' => $validated['year']])
             ->with('success', 'Budget aggiornato con successo.');

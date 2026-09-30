@@ -5,6 +5,7 @@ namespace App\Http\Controllers\App;
 use App\Http\Controllers\Controller;
 use App\Models\ActualEntry;
 use App\Models\BudgetEntry;
+use App\Models\BudgetEntryItem;
 use App\Models\Category;
 use App\Models\Reconciliation;
 use App\Models\Setting;
@@ -50,6 +51,17 @@ class DataExportController extends Controller
                     (string) $e->month,
                     (string) $e->amount,
                     $e->notes ?? '',
+                ]),
+            ));
+
+            $zip->addFromString('budget_entry_items.csv', $this->buildCsv(
+                ['id', 'budget_entry_id', 'description', 'amount', 'sort_order'],
+                $this->collectRows(BudgetEntryItem::query()->orderBy('id')->get(), fn (BudgetEntryItem $i): array => [
+                    (string) $i->id,
+                    (string) $i->budget_entry_id,
+                    $i->description,
+                    (string) $i->amount,
+                    (string) $i->sort_order,
                 ]),
             ));
 
@@ -170,6 +182,22 @@ class DataExportController extends Controller
                     }
                 }
 
+                // Import budget entry items (absent in older backups)
+                $budgetItemsCsv = $zip->getFromName('budget_entry_items.csv');
+                if ($budgetItemsCsv !== false) {
+                    foreach ($this->parseCsv($budgetItemsCsv) as $row) {
+                        DB::table('budget_entry_items')->insert([
+                            'id' => (int) $row['id'],
+                            'budget_entry_id' => (int) $row['budget_entry_id'],
+                            'description' => $row['description'],
+                            'amount' => $row['amount'],
+                            'sort_order' => (int) $row['sort_order'],
+                            'created_at' => $now,
+                            'updated_at' => $now,
+                        ]);
+                    }
+                }
+
                 // Import actual entries
                 $actualCsv = $zip->getFromName('actual_entries.csv');
                 if ($actualCsv !== false) {
@@ -217,6 +245,7 @@ class DataExportController extends Controller
                 // Reset sequences for PostgreSQL
                 $this->resetSequence('categories');
                 $this->resetSequence('budget_entries');
+                $this->resetSequence('budget_entry_items');
                 $this->resetSequence('actual_entries');
                 $this->resetSequence('reconciliations');
             });
