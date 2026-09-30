@@ -14,6 +14,7 @@ class ClaudeMerchantCategorizer implements MerchantCategorizer
 {
     public function __construct(
         private readonly ?string $apiKey,
+        private readonly ?string $workspaceId,
         private readonly string $model,
         private readonly string $effort,
     ) {}
@@ -44,6 +45,7 @@ class ClaudeMerchantCategorizer implements MerchantCategorizer
                     'effort' => Effort::from($this->effort),
                     'format' => ['type' => 'json_schema', 'schema' => CategorizationPrompt::schema($categories)],
                 ],
+                workspaceID: blank($this->workspaceId) ? null : $this->workspaceId,
             );
         } catch (AuthenticationException) {
             throw new CategorizerException('Chiave API di Claude non valida.');
@@ -52,7 +54,7 @@ class ClaudeMerchantCategorizer implements MerchantCategorizer
         } catch (APIConnectionException) {
             throw new CategorizerException('Impossibile contattare Claude: controlla la connessione.');
         } catch (APIStatusException $e) {
-            throw new CategorizerException('Errore di Claude: '.($e->type->value ?? $e->getMessage()));
+            throw new CategorizerException(self::describe($e));
         }
 
         if ($message->stopReason === 'refusal') {
@@ -70,5 +72,22 @@ class ClaudeMerchantCategorizer implements MerchantCategorizer
         }
 
         throw new CategorizerException('Claude non ha restituito una risposta.');
+    }
+
+    /**
+     * Turns an API error into a readable message: the API explanation, plus a hint for known cases.
+     */
+    public static function describe(APIStatusException $e): string
+    {
+        $message = is_array($e->body) && is_array($e->body['error'] ?? null) && is_string($e->body['error']['message'] ?? null)
+            ? $e->body['error']['message']
+            : ($e->type->value ?? 'errore sconosciuto');
+
+        if (str_contains($message, 'anthropic-workspace-id')) {
+            return 'La chiave API non è associata a un workspace: imposta ANTHROPIC_WORKSPACE_ID nel file .env '
+                .'oppure usa una chiave creata dentro un workspace. Dettaglio: '.$message;
+        }
+
+        return "Errore di Claude ({$e->status}): {$message}";
     }
 }

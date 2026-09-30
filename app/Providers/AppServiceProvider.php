@@ -18,6 +18,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(MerchantCategorizer::class, fn (): MerchantCategorizer => match (config('bank_import.categorizer')) {
             'claude' => new ClaudeMerchantCategorizer(
                 apiKey: config('bank_import.claude.api_key'),
+                workspaceId: config('bank_import.claude.workspace_id'),
                 model: (string) config('bank_import.claude.model'),
                 effort: (string) config('bank_import.claude.effort'),
             ),
