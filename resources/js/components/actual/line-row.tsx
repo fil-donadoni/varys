@@ -78,7 +78,7 @@ export function LineRow({ line, category, categories }: LineRowProps) {
                 {line.kind === 'bank' ? (line.kind_label ?? 'Banca') : 'Manuale'}
             </Badge>
             <span className="w-24 text-right font-medium tabular-nums">{formatCurrency(line.amount)}</span>
-            <div className="flex w-60 justify-end gap-1">
+            <div className="flex w-64 justify-end gap-1">
                 {line.kind === 'bank' && confirmExclude ? (
                     <>
                         <span className="self-center text-muted-foreground">Escludere dal consuntivo?</span>
@@ -101,15 +101,29 @@ export function LineRow({ line, category, categories }: LineRowProps) {
                         </Button>
                     </>
                 ) : line.kind === 'bank' ? (
-                    <CategoryCombobox
-                        categories={categories}
-                        amount={line.bank_amount ?? 0}
-                        value={category.id}
-                        excluded={false}
-                        disabled={processing}
-                        ariaLabel={`Categoria di ${line.description}`}
-                        onChange={reassign}
-                    />
+                    <>
+                        <CategoryCombobox
+                            categories={categories}
+                            amount={line.bank_amount ?? 0}
+                            value={category.id}
+                            excluded={false}
+                            disabled={processing}
+                            ariaLabel={`Categoria di ${line.description}`}
+                            onChange={reassign}
+                        />
+                        {/* A bank movement can't be deleted, only left out of the actual. */}
+                        <Button
+                            size="icon"
+                            variant="ghost"
+                            className="size-7"
+                            title="Escludi dal consuntivo"
+                            aria-label={`Elimina ${line.description}`}
+                            disabled={processing}
+                            onClick={() => setConfirmExclude(true)}
+                        >
+                            <Trash2 className="size-3.5" />
+                        </Button>
+                    </>
                 ) : confirmDelete ? (
                     <>
                         <span className="self-center text-muted-foreground">Eliminare?</span>

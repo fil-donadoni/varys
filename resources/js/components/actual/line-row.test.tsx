@@ -58,4 +58,25 @@ describe('LineRow bank movement', () => {
         expect(router.patch).not.toHaveBeenCalled();
         expect(screen.getByRole('combobox', { name: 'Categoria di CAFFE MAINO' })).toBeInTheDocument();
     });
+
+    it('removes a movement from the actual with the bin button, after confirmation', () => {
+        render(
+            <ul>
+                <LineRow line={line} category={categories[0]} categories={categories} />
+            </ul>,
+        );
+
+        fireEvent.click(screen.getByRole('button', { name: 'Elimina CAFFE MAINO' }));
+
+        expect(router.patch).not.toHaveBeenCalled();
+        expect(screen.getByText(/Escludere/)).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Escludi' }));
+
+        expect(router.patch).toHaveBeenCalledWith(
+            '/bank-transactions/7/reassign',
+            { category_id: null, exclude: true },
+            expect.anything(),
+        );
+    });
 });
