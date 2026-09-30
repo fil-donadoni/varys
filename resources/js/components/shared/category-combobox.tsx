@@ -24,7 +24,7 @@ interface CategoryComboboxProps {
     ariaLabel: string;
     onChange: (categoryId: number | null, exclude: boolean) => void;
     /** Opens the "new category" dialog, prefilled with what the user was searching. */
-    onCreate: (name: string) => void;
+    onCreate?: (name: string) => void;
 }
 
 function ColorDot({ color }: { color: string | null }) {
@@ -60,7 +60,7 @@ export function CategoryCombobox({
 
     function create() {
         setOpen(false);
-        onCreate(search.trim());
+        onCreate?.(search.trim());
         setSearch('');
     }
 
@@ -132,10 +132,12 @@ export function CategoryCombobox({
                         ))}
                         <CommandSeparator />
                         <CommandGroup forceMount>
-                            <CommandItem value="__create" forceMount onSelect={create}>
-                                <Plus />
-                                {search.trim() !== '' ? `Crea "${search.trim()}"…` : 'Nuova categoria…'}
-                            </CommandItem>
+                            {onCreate && (
+                                <CommandItem value="__create" forceMount onSelect={create}>
+                                    <Plus />
+                                    {search.trim() !== '' ? `Crea "${search.trim()}"…` : 'Nuova categoria…'}
+                                </CommandItem>
+                            )}
                             <CommandItem
                                 value="__exclude"
                                 keywords={['escludi', 'giroconto', 'finanziamento']}
