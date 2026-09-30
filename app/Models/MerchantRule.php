@@ -2,16 +2,16 @@
 
 namespace App\Models;
 
-use App\Models\Traits\Filterable;
-use Database\Factories\ActualEntryFactory;
+use App\Enums\MerchantMatchType;
+use Database\Factories\MerchantRuleFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class ActualEntry extends Model
+class MerchantRule extends Model
 {
-    /** @use HasFactory<ActualEntryFactory> */
-    use Filterable, HasFactory;
+    /** @use HasFactory<MerchantRuleFactory> */
+    use HasFactory;
 
     protected $guarded = ['id'];
 
@@ -21,9 +21,9 @@ class ActualEntry extends Model
     protected function casts(): array
     {
         return [
-            'amount' => 'decimal:2',
-            'manual_amount' => 'decimal:2',
-            'imported_amount' => 'decimal:2',
+            'match_type' => MerchantMatchType::class,
+            'always_ask' => 'boolean',
+            'times_confirmed' => 'integer',
         ];
     }
 

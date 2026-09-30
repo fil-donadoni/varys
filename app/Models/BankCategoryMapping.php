@@ -2,16 +2,16 @@
 
 namespace App\Models;
 
-use App\Models\Traits\Filterable;
-use Database\Factories\ActualEntryFactory;
+use App\Enums\Bank;
+use Database\Factories\BankCategoryMappingFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class ActualEntry extends Model
+class BankCategoryMapping extends Model
 {
-    /** @use HasFactory<ActualEntryFactory> */
-    use Filterable, HasFactory;
+    /** @use HasFactory<BankCategoryMappingFactory> */
+    use HasFactory;
 
     protected $guarded = ['id'];
 
@@ -21,9 +21,7 @@ class ActualEntry extends Model
     protected function casts(): array
     {
         return [
-            'amount' => 'decimal:2',
-            'manual_amount' => 'decimal:2',
-            'imported_amount' => 'decimal:2',
+            'bank' => Bank::class,
         ];
     }
 

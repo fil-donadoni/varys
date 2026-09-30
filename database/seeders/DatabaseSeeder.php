@@ -43,5 +43,7 @@ class DatabaseSeeder extends Seeder
 
         $categories = collect(array_merge($incomeCategories, $expenseCategories))
             ->map(fn (array $data): Category => Category::create($data));
+
+        $this->call(MerchantRuleSeeder::class);
     }
 }
