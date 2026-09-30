@@ -266,3 +266,36 @@ test('an overlapping file only imports the new movements', function (): void {
         ->and($second->rows_imported)->toBe(1)
         ->and($second->rows_duplicates)->toBe(2);
 });
+
+test('a category can be created on the fly and assigned to the whole merchant', function (): void {
+    uploadStatement(BankStatementFixtures::ing());
+    Category::factory()->expense()->create(['sort_order' => 7]);
+    $amazon = transactionFor('AMAZON');
+
+    $this->post("/bank-transactions/{$amazon->id}/category", [
+        'name' => ' Acquisti online ',
+        'type' => 'expense',
+        'color' => '#22c55e',
+        'apply_to_merchant' => true,
+    ])->assertRedirect()->assertSessionHasNoErrors()->assertSessionHas('notice');
+
+    $category = Category::query()->where('name', 'Acquisti online')->sole();
+
+    expect($category->sort_order)->toBe(8)
+        ->and(BankTransaction::query()->where('merchant_key', 'AMAZON')->pluck('category_id')->unique()->all())->toBe([$category->id])
+        ->and(BankTransaction::query()->where('merchant_key', 'AMAZON')->pluck('status')->unique()->all())->toBe([TransactionStatus::Auto]);
+});
+
+test('creating a category on the fly validates name and type', function (): void {
+    uploadStatement(BankStatementFixtures::ing());
+    Category::factory()->expense()->create(['name' => 'Spesa']);
+    $amazon = transactionFor('AMAZON');
+
+    $this->post("/bank-transactions/{$amazon->id}/category", ['name' => 'Spesa', 'type' => 'expense', 'apply_to_merchant' => true])
+        ->assertSessionHasErrors(['name' => 'Esiste già una categoria con questo nome.']);
+
+    $this->post("/bank-transactions/{$amazon->id}/category", ['name' => 'Stipendio', 'type' => 'income', 'apply_to_merchant' => true])
+        ->assertSessionHasErrors('type');
+
+    expect(Category::count())->toBe(1);
+});
