@@ -1,9 +1,7 @@
-import { router } from '@inertiajs/react';
-import { CheckCircle2, Circle, CircleDot, Loader2, MinusCircle, ShieldCheck, Sparkles } from 'lucide-react';
-import { type ReactNode, useState } from 'react';
+import { CheckCircle2, Circle, CircleDot, Loader2, Lock, MinusCircle, ShieldCheck, Sparkles } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
 
 export interface LlmPreviewItem {
@@ -44,35 +42,38 @@ const ANONYMIZATION_LABELS: Record<string, string> = {
     emails: 'email',
 };
 
-const PREVIEW_LIMIT = 12;
+export interface AiControls {
+    selectedCount: number;
+    running: boolean;
+    onSend: () => void;
+}
 
 interface ImportPipelineProps {
-    importId: number;
     filename: string;
     rowsTotal: number;
     rowsDuplicates: number;
     toReviewCount: number;
     readOnly: boolean;
     pipeline: Pipeline;
+    ai: AiControls;
     llmError?: string;
 }
 
 /** The import as a sequence of steps: upload → anonymization → split → local rules → AI → review. */
 export function ImportPipeline({
-    importId,
     filename,
     rowsTotal,
     rowsDuplicates,
     toReviewCount,
     readOnly,
     pipeline,
+    ai,
     llmError,
 }: ImportPipelineProps) {
-    const [running, setRunning] = useState(false);
     const { llm } = pipeline;
     const toSend = llm.preview?.send ?? [];
 
-    const llmStatus: StepStatus = running
+    const llmStatus: StepStatus = ai.running
         ? 'running'
         : llm.unavailable_reason !== null
           ? 'skipped'
@@ -121,14 +122,7 @@ export function ImportPipeline({
                 title={`Categorizzazione AI · ${llm.provider}`}
                 icon={<Sparkles className="size-4" />}
             >
-                <LlmStep
-                    importId={importId}
-                    llm={llm}
-                    readOnly={readOnly}
-                    running={running}
-                    onRunningChange={setRunning}
-                    error={llmError}
-                />
+                <LlmStep llm={llm} readOnly={readOnly} ai={ai} error={llmError} />
             </Step>
 
             <Step status={readOnly ? 'done' : toReviewCount > 0 ? 'current' : 'done'} title="Revisione e conferma" last>
@@ -143,115 +137,58 @@ export function ImportPipeline({
 }
 
 interface LlmStepProps {
-    importId: number;
     llm: Pipeline['llm'];
     readOnly: boolean;
-    running: boolean;
-    onRunningChange: (running: boolean) => void;
+    ai: AiControls;
     error?: string;
 }
 
-function LlmStep({ importId, llm, readOnly, running, onRunningChange, error }: LlmStepProps) {
-    const [excluded, setExcluded] = useState<string[]>([]);
-    const [showAll, setShowAll] = useState(false);
-    const toSend = llm.preview?.send ?? [];
-    const skipped = llm.preview?.skipped ?? [];
-    const selectedCount = toSend.length - excluded.length;
-    const visible = showAll ? toSend : toSend.slice(0, PREVIEW_LIMIT);
-
-    function toggle(merchantKey: string, include: boolean) {
-        setExcluded((prev) => (include ? prev.filter((k) => k !== merchantKey) : [...prev, merchantKey]));
-    }
-
-    function send() {
-        router.post(
-            `/bank-imports/${importId}/categorize`,
-            { excluded },
-            {
-                preserveScroll: true,
-                onStart: () => onRunningChange(true),
-                onFinish: () => onRunningChange(false),
-                onSuccess: () => setExcluded([]),
-            },
-        );
-    }
+function LlmStep({ llm, readOnly, ai, error }: LlmStepProps) {
+    const available = llm.unavailable_reason === null && !readOnly;
+    const hasCandidates = (llm.preview?.send.length ?? 0) > 0;
+    const privateCount = llm.preview?.skipped.length ?? 0;
 
     return (
-        <div className="space-y-3">
+        <div className="space-y-2">
             {llm.stats && (
                 <p>
-                    Inviati {llm.stats.sent} esercenti: {llm.stats.auto} categorizzati con sicurezza,{' '}
-                    {llm.stats.to_review} da verificare, {llm.stats.unknown} non riconosciuti.
+                    L'AI ha proposto una categoria per {llm.stats.sent - llm.stats.unknown} esercenti su{' '}
+                    {llm.stats.sent}: {llm.stats.auto} sicure (già tra i "Pronti"), {llm.stats.to_review} da verificare
+                    nella tabella.
                 </p>
             )}
 
             {llm.unavailable_reason !== null && <p>{llm.unavailable_reason}</p>}
 
-            {llm.unavailable_reason === null && !readOnly && toSend.length === 0 && !llm.stats && (
-                <p>Niente da chiedere all'AI: tutto è stato categorizzato localmente o va confermato a mano.</p>
+            {available && !hasCandidates && !llm.stats && (
+                <p>Niente da chiedere all'AI: tutto è stato riconosciuto localmente o resta privato.</p>
             )}
 
-            {llm.unavailable_reason === null && !readOnly && toSend.length > 0 && (
-                <div className="space-y-2 rounded-md border bg-background p-3">
-                    <p className="font-medium text-foreground">
-                        Anteprima di cosa viene inviato: solo il nome dell'esercente e se è un'entrata o un'uscita.
-                        Niente importi, date o dati personali.
-                    </p>
-                    <ul className="grid gap-1 sm:grid-cols-2">
-                        {visible.map((item) => {
-                            const checked = !excluded.includes(item.merchant_key);
-                            const id = `send-${item.merchant_key}`;
-
-                            return (
-                                <li key={item.merchant_key} className="flex items-center gap-2">
-                                    <Checkbox
-                                        id={id}
-                                        checked={checked}
-                                        disabled={running}
-                                        onCheckedChange={(value) => toggle(item.merchant_key, value === true)}
-                                    />
-                                    <label
-                                        htmlFor={id}
-                                        className={cn('truncate', !checked && 'line-through opacity-60')}
-                                    >
-                                        <span className="font-mono text-[11px] text-foreground">{item.name}</span>
-                                        <span className="ml-1 text-[10px]">
-                                            {item.direction}
-                                            {item.bank_category && ` · banca: ${item.bank_category}`}
-                                        </span>
-                                    </label>
-                                </li>
-                            );
-                        })}
-                    </ul>
-                    {toSend.length > PREVIEW_LIMIT && (
-                        <button
-                            type="button"
-                            className="text-[11px] underline underline-offset-2"
-                            onClick={() => setShowAll(!showAll)}
-                        >
-                            {showAll ? 'Mostra meno' : `Mostra tutti (${toSend.length})`}
-                        </button>
-                    )}
-
-                    {skipped.length > 0 && (
-                        <p className="text-[11px]">
-                            Non inviati, da confermare a mano:{' '}
-                            {skipped.map((item) => `${item.label} (${item.reason.toLowerCase()})`).join(', ')}.
-                        </p>
-                    )}
-
-                    <Button size="sm" onClick={send} disabled={running || selectedCount === 0}>
-                        {running ? (
+            {available && hasCandidates && (
+                <div className="flex flex-wrap items-center gap-3">
+                    <Button size="sm" onClick={ai.onSend} disabled={ai.running || ai.selectedCount === 0}>
+                        {ai.running ? (
                             <>
                                 <Loader2 className="size-3.5 animate-spin" /> Analisi in corso…
                             </>
                         ) : (
                             <>
-                                <Sparkles className="size-3.5" /> Invia {selectedCount} esercenti all'AI
+                                <Sparkles className="size-3.5" /> Chiedi all'AI di proporre le categorie (
+                                {ai.selectedCount})
                             </>
                         )}
                     </Button>
+                    <p className="max-w-xl">
+                        Riceve solo il nome degli esercenti segnati con{' '}
+                        <Sparkles className="inline size-3 text-primary" /> nella tabella: niente importi, date o dati
+                        personali. Clicca l'icona per escluderne uno.
+                        {privateCount > 0 && (
+                            <>
+                                {' '}
+                                {privateCount} restano privati <Lock className="inline size-3" /> e li scegli tu.
+                            </>
+                        )}
+                    </p>
                 </div>
             )}
 

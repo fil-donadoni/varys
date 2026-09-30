@@ -1,6 +1,6 @@
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import { Check, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
-import { Fragment, useState } from 'react';
+import { Check, ChevronDown, ChevronLeft, ChevronRight, Lock, Sparkles } from 'lucide-react';
+import { Fragment, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { CategorySelect } from '@/components/shared/category-select';
 import { ImportPipeline, type Pipeline } from '@/components/shared/import-pipeline';
@@ -30,6 +30,9 @@ interface Props {
     categories: ImportCategory[];
     pipeline: Pipeline;
 }
+
+/** Whether a merchant will be sent to the AI, was left out by the user, or stays private. */
+type AiRowState = { state: 'send' } | { state: 'skip' } | { state: 'private'; reason: string };
 
 function formatDate(date: string | null): string {
     return date ? new Date(date).toLocaleDateString('it-IT') : '—';
@@ -63,6 +66,49 @@ export default function BankImportShow({ bankImport, transactions, categories, p
     const reviewList = transactions.filter((t) => queue.ids.has(t.id));
     const ready = transactions.filter((t) => t.status === 'auto' || t.status === 'confirmed');
     const excluded = transactions.filter((t) => t.status === 'excluded');
+
+    // AI suggestions: one list only. The table marks which merchants would be sent; the user can leave some out.
+    const [skipKeys, setSkipKeys] = useState<string[]>([]);
+    const [aiRunning, setAiRunning] = useState(false);
+    const aiStates = useMemo(() => {
+        const states = new Map<string, AiRowState>();
+        if (pipeline.llm.unavailable_reason !== null || readOnly || !pipeline.llm.preview) {
+            return states;
+        }
+        for (const item of pipeline.llm.preview.send) {
+            states.set(item.merchant_key, { state: 'send' });
+        }
+        for (const item of pipeline.llm.preview.skipped) {
+            states.set(item.merchant_key, { state: 'private', reason: item.reason });
+        }
+        return states;
+    }, [pipeline.llm, readOnly]);
+
+    function aiStateFor(merchantKey: string): AiRowState | undefined {
+        const state = aiStates.get(merchantKey);
+        return state?.state === 'send' && skipKeys.includes(merchantKey) ? { state: 'skip' } : state;
+    }
+
+    function toggleAi(merchantKey: string) {
+        setSkipKeys((prev) =>
+            prev.includes(merchantKey) ? prev.filter((key) => key !== merchantKey) : [...prev, merchantKey],
+        );
+    }
+
+    function askAi() {
+        router.post(
+            `/bank-imports/${bankImport.id}/categorize`,
+            { excluded: skipKeys },
+            {
+                preserveScroll: true,
+                onStart: () => setAiRunning(true),
+                onFinish: () => setAiRunning(false),
+                onSuccess: () => setSkipKeys([]),
+            },
+        );
+    }
+
+    const aiSelectedCount = (pipeline.llm.preview?.send ?? []).filter((i) => !skipKeys.includes(i.merchant_key)).length;
 
     function complete() {
         router.post(
@@ -111,13 +157,13 @@ export default function BankImportShow({ bankImport, transactions, categories, p
 
                 <div className="rounded-lg border bg-card p-4 shadow-xs">
                     <ImportPipeline
-                        importId={bankImport.id}
                         filename={bankImport.original_filename}
                         rowsTotal={bankImport.rows_total}
                         rowsDuplicates={bankImport.rows_duplicates}
                         toReviewCount={toReview.length}
                         readOnly={readOnly}
                         pipeline={pipeline}
+                        ai={{ selectedCount: aiSelectedCount, running: aiRunning, onSend: askAi }}
                         llmError={errors.llm}
                     />
                 </div>
@@ -134,7 +180,13 @@ export default function BankImportShow({ bankImport, transactions, categories, p
                     </TabsList>
 
                     <TabsContent value="to_review">
-                        <MerchantTable transactions={reviewList} categories={categories} readOnly={readOnly} />
+                        <MerchantTable
+                            transactions={reviewList}
+                            categories={categories}
+                            readOnly={readOnly || aiRunning}
+                            aiStateFor={aiStateFor}
+                            onToggleAi={toggleAi}
+                        />
                     </TabsContent>
                     <TabsContent value="ready">
                         <MerchantTable transactions={ready} categories={categories} readOnly={readOnly} />
@@ -154,9 +206,11 @@ interface MerchantTableProps {
     transactions: ImportTransaction[];
     categories: ImportCategory[];
     readOnly: boolean;
+    aiStateFor?: (merchantKey: string) => AiRowState | undefined;
+    onToggleAi?: (merchantKey: string) => void;
 }
 
-function MerchantTable({ transactions, categories, readOnly }: MerchantTableProps) {
+function MerchantTable({ transactions, categories, readOnly, aiStateFor, onToggleAi }: MerchantTableProps) {
     const groups = groupByMerchant(transactions);
 
     if (groups.length === 0) {
@@ -184,6 +238,8 @@ function MerchantTable({ transactions, categories, readOnly }: MerchantTableProp
                             group={group}
                             categories={categories}
                             readOnly={readOnly}
+                            ai={aiStateFor?.(group.merchantKey)}
+                            onToggleAi={() => onToggleAi?.(group.merchantKey)}
                         />
                     ))}
                 </TableBody>
@@ -196,15 +252,29 @@ function MerchantRows({
     group,
     categories,
     readOnly,
+    ai,
+    onToggleAi,
 }: {
     group: MerchantGroup;
     categories: ImportCategory[];
     readOnly: boolean;
+    ai?: AiRowState;
+    onToggleAi: () => void;
 }) {
     const [open, setOpen] = useState(false);
     const first = group.transactions[0];
     const allExcluded = group.transactions.every((t) => t.status === 'excluded');
-    const sources = [...new Set(group.transactions.map((t) => t.source_label).filter(Boolean))];
+    const sources = [
+        ...new Set(
+            group.transactions
+                .map((t) =>
+                    t.source === 'llm' && t.confidence
+                        ? `${t.source_label} ${Math.round(t.confidence * 100)}%`
+                        : t.source_label,
+                )
+                .filter(Boolean),
+        ),
+    ];
     const resolved = group.transactions.every((t) => t.status !== 'to_review');
 
     return (
@@ -261,6 +331,7 @@ function MerchantRows({
                             {source}
                         </Badge>
                     ))}
+                    {sources.length === 0 && ai && <AiIndicator ai={ai} disabled={readOnly} onToggle={onToggleAi} />}
                 </TableCell>
             </TableRow>
 
@@ -304,5 +375,32 @@ function MerchantRows({
                     </TableRow>
                 ))}
         </Fragment>
+    );
+}
+
+function AiIndicator({ ai, disabled, onToggle }: { ai: AiRowState; disabled: boolean; onToggle: () => void }) {
+    if (ai.state === 'private') {
+        return (
+            <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground" title={ai.reason}>
+                <Lock className="size-3" /> Privato
+            </span>
+        );
+    }
+
+    const sending = ai.state === 'send';
+
+    return (
+        <button
+            type="button"
+            onClick={onToggle}
+            disabled={disabled}
+            className={cn(
+                'inline-flex items-center gap-1 rounded px-1 text-[10px] hover:bg-muted',
+                sending ? 'text-primary' : 'text-muted-foreground line-through',
+            )}
+            title={sending ? "Verrà proposto dall'AI: clicca per escluderlo" : "Escluso dall'AI: clicca per includerlo"}
+        >
+            <Sparkles className="size-3" /> AI
+        </button>
     );
 }
