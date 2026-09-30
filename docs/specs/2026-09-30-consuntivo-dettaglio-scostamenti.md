@@ -23,14 +23,14 @@ Data: 2026-09-30
 
 ### Nuova tabella `actual_items`
 
-| colonna       | tipo                      | note                                                    |
-|---------------|---------------------------|---------------------------------------------------------|
-| id            | bigint                    |                                                         |
-| category_id   | FK categories, cascade    |                                                         |
-| date          | date                      | il mese contabile deriva dalla data                     |
-| description   | string                    | obbligatoria                                            |
-| amount        | decimal(12,2)             | positivo = aumenta l'effettivo della categoria (come oggi `manual_amount`); negativo ammesso (rimborsi) |
-| timestamps    |                           |                                                         |
+| colonna     | tipo                   | note                                                                                                    |
+| ----------- | ---------------------- | ------------------------------------------------------------------------------------------------------- |
+| id          | bigint                 |                                                                                                         |
+| category_id | FK categories, cascade |                                                                                                         |
+| date        | date                   | il mese contabile deriva dalla data                                                                     |
+| description | string                 | obbligatoria                                                                                            |
+| amount      | decimal(12,2)          | positivo = aumenta l'effettivo della categoria (come oggi `manual_amount`); negativo ammesso (rimborsi) |
+| timestamps  |                        |                                                                                                         |
 
 Indice su `(category_id, date)`. Model `ActualItem` (`$guarded = ['id']`, `casts()`, relazione `category()`),
 `Category::actualItems()`. Factory e seeder.
@@ -116,9 +116,9 @@ Tab/anno/mese/categoria in query string.
 - Tabella raggruppata Entrate/Uscite: `Categoria | Budget | Effettivo | Scostamento € | %` +
   barra sottile effettivo/budget. Nessun input in riga; rimossa la label "+ X da banca = Y".
 - Click riga → espande le voci: `data | descrizione | importo | origine (Banca/Manuale)`.
-  - Banca: `CategoryCombobox` per ricategorizzare + bottone "Escludi".
-  - Manuale: modifica inline (data, descrizione, importo), elimina con conferma in-app (niente `confirm()` del browser).
-  - Riga "+ Aggiungi voce": data di default = oggi se mese corrente, altrimenti 1° del mese.
+    - Banca: `CategoryCombobox` per ricategorizzare + bottone "Escludi".
+    - Manuale: modifica inline (data, descrizione, importo), elimina con conferma in-app (niente `confirm()` del browser).
+    - Riga "+ Aggiungi voce": data di default = oggi se mese corrente, altrimenti 1° del mese.
 - Categorie senza budget né effettivo raggruppate in fondo, collassate ("N categorie vuote").
 - Totali per gruppo e saldo netto come oggi.
 
@@ -128,10 +128,10 @@ Tab/anno/mese/categoria in query string.
   con righe totale e saldo.
 - Cella mese = effettivo. Colore per scostamento rispetto al budget di quel mese
   (uscite; per le entrate la logica si inverte):
-  - verde: sotto budget oltre il 10%
-  - neutro: entro ±10%
-  - ambra: +10% … +30%
-  - rosso: oltre +30%, oppure effettivo > 0 senza budget (marcatore "senza budget")
+    - verde: sotto budget oltre il 10%
+    - neutro: entro ±10%
+    - ambra: +10% … +30%
+    - rosso: oltre +30%, oppure effettivo > 0 senza budget (marcatore "senza budget")
 - Mesi futuri: budget in grigio, nessun colore. Mese corrente: bordo tratteggiato, escluso dalle medie.
 - Tooltip cella: budget, effettivo, differenza.
 - Ordinamento per colonna, default scostamento % decrescente (a parità/null: scostamento €).
@@ -143,8 +143,8 @@ La logica di classificazione colore sta in una funzione pura in `resources/js/li
 
 - Pest: `ActualVarianceReport` (mesi chiusi per anno passato/corrente/futuro, medie, picco, budget zero),
   CRUD voci manuali + ricalcolo (incluso cambio mese/categoria), reassign/exclude su import completato
-  + ricalcolo di entrambe le categorie, vincolo uscita→categoria entrata, migrazione dati, export/import backup
-  (con e senza `actual_items.csv`), index tab mese/anno.
+    - ricalcolo di entrambe le categorie, vincolo uscita→categoria entrata, migrazione dati, export/import backup
+      (con e senza `actual_items.csv`), index tab mese/anno.
 - Vitest: classificazione colore scostamento (uscite/entrate, senza budget, soglie).
 - Verifica manuale in Chrome di entrambe le tab.
 
