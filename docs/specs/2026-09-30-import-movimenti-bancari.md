@@ -9,19 +9,28 @@ Caricare gli export dei movimenti di Intesa Sanpaolo e ING e ritrovare i consunt
 
 ## Perimetro
 
-- **Incluso:** solo le **spese con carta** (POS, e-commerce, carta prepagata). Uscite → categorie di tipo `expense`.
-- **Incluso anche:** l'addebito mensile cumulativo della carta di credito ING ("Addebito Carta Di Credito"), come esercente `CARTA DI CREDITO ING`, con regola iniziale verso la categoria "Telefono, TV e Internet" se esiste.
-- **Escluso:** bonifici (in entrata e in uscita), addebiti diretti SDD, F24, polizze, rate, canoni carta, interessi e bolli.
+> Aggiornato il 2026-09-30: il perimetro è stato esteso da "solo spese con carta" a **tutti i movimenti**.
+
+- **Incluso:** tutti i movimenti contabilizzati dei due conti, classificati per tipo (`TransactionKind`):
+    - `card`: pagamenti con carta di debito, prepagata o credito, compreso l'addebito mensile della carta di credito ING (esercente `CARTA DI CREDITO ING`, regola iniziale → "Telefono, TV e Internet")
+    - `direct_debit`: addebiti diretti SDD
+    - `transfer_in` / `transfer_out`: bonifici ricevuti e inviati
+    - `other`: tutto il resto (F24, polizze, canoni, bolli, interessi, erogazioni)
+- **Importi** con il segno della banca: negativo = uscita, positivo = entrata. Le categorie di spesa sommano le uscite in positivo, quelle di entrata sommano le entrate.
+- **Mese del consuntivo:** `accounting_date` = data contabile (ING), oppure l'unica data disponibile (Intesa). Così i consuntivi tornano con i saldi reali dei conti.
+- **Giroconti tra conti propri** ed erogazioni di finanziamenti: si escludono con una regola "escludi sempre" sulla controparte (`merchant_rules.exclude`).
+- **Movimenti Intesa "NON CONTABILIZZATO":** saltati. Verranno importati quando saranno contabilizzati.
 - **Banche:** Intesa (xlsx "Lista Operazione") e ING (xlsx "MovimentiContoCorrenteArancio"). Solo xlsx.
 - **Ambiente:** l'app gira solo in locale.
+- **Saldo iniziale:** somma dei saldi dei conti al 1/1/2026, inserita a mano dall'utente nelle Impostazioni.
 
 ## Principi di privacy
 
 1. Il file caricato non viene salvato: viene letto in memoria e se ne salvano solo le spese con carta.
-2. Le righe fuori perimetro non vengono salvate; di loro resta solo il conteggio nel riepilogo dell'import.
+2. I movimenti esclusi da regola vengono salvati con stato `excluded`, così un nuovo import li riconosce come duplicati.
 3. All'LLM vanno **solo nomi di esercenti distinti e normalizzati**, più la lista delle categorie ed eventualmente la categoria proposta dalla banca. Non vanno importi, date, città, indirizzi, numeri di carta o conto, né quante volte compare un esercente.
 4. Id casuali usa e getta, ordine mescolato.
-5. Gli esercenti che "sembrano una persona" (PayPal verso un utente, `Sum*Nome Cognome`, Satispay…) non vengono mai inviati: vanno direttamente a conferma manuale.
+5. Gli esercenti che "sembrano una persona" (PayPal verso un utente, `Sum*Nome Cognome`, Satispay…) e **tutte le controparti di bonifici senza forma societaria** (Srl, SpA, associazione…) non vengono mai inviati all'LLM: vanno direttamente a conferma manuale.
 6. Prima di ogni invio c'è un'anteprima della lista che partirà, e l'utente può escludere delle voci.
 
 ## Modello dati
@@ -230,3 +239,9 @@ Le route seguono le convenzioni esistenti: controller in `app/Http/Controllers/A
 1. Storni/rimborsi su carta → importo negativo nella categoria dell'esercente.
 2. Addebito della carta di credito ING → importato; regola iniziale verso "Telefono, TV e Internet".
 3. ING → solo xlsx.
+
+## Aggiornamenti successivi
+
+- Colonne aggiunte a `bank_transactions`: `kind`, `accounting_date`. `amount` ha il segno della banca.
+- `bank_imports.rows_card_expenses` → `rows_imported`.
+- `merchant_rules.category_id` è nullable, e c'è la nuova colonna `exclude` (bool).

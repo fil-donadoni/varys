@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Enums\TransactionKind;
 use App\Enums\TransactionStatus;
 use App\Models\BankImport;
 use App\Models\BankTransaction;
@@ -23,9 +24,11 @@ class BankTransactionFactory extends Factory
         return [
             'bank_import_id' => BankImport::factory(),
             'fingerprint' => Str::random(40),
+            'kind' => TransactionKind::Card,
+            'accounting_date' => now()->startOfMonth(),
             'operation_date' => now()->startOfMonth(),
             'booking_date' => null,
-            'amount' => fake()->randomFloat(2, 1, 200),
+            'amount' => -fake()->randomFloat(2, 1, 200),
             'raw_description' => "Pagamento presso {$merchant}",
             'merchant_key' => $merchant,
             'merchant_label' => $merchant,

@@ -26,6 +26,7 @@ class MerchantRule extends Model
         return [
             'match_type' => MerchantMatchType::class,
             'always_ask' => 'boolean',
+            'exclude' => 'boolean',
             'times_confirmed' => 'integer',
         ];
     }

@@ -23,4 +23,8 @@ it('normalizes merchant labels', function (string $label, string $expected): voi
     ['PAYPAL *lorenzo.barba9', 'PAYPAL *LORENZO.BARBA9'],
     ['46102 Druogno Via Domo', 'DRUOGNO'],
     ['Q8 MILANO', 'Q8 MILANO'],
+    ['VIVIGAS S.p.A.', 'VIVIGAS SPA'],
+    ['VIVIGAS S P A', 'VIVIGAS SPA'],
+    ['DM GROUP S.R.L.', 'DM GROUP SRL'],
+    ['SPAZIO VERDE', 'SPAZIO VERDE'],
 ]);

@@ -98,7 +98,7 @@ class DataExportController extends Controller
             ));
 
             $zip->addFromString('bank_imports.csv', $this->buildCsv(
-                ['id', 'bank', 'original_filename', 'period_start', 'period_end', 'rows_total', 'rows_card_expenses', 'rows_duplicates', 'status', 'completed_at'],
+                ['id', 'bank', 'original_filename', 'period_start', 'period_end', 'rows_total', 'rows_imported', 'rows_duplicates', 'status', 'completed_at'],
                 $this->collectRows(BankImport::query()->orderBy('id')->get(), fn (BankImport $i): array => [
                     (string) $i->id,
                     $i->bank->value,
@@ -106,7 +106,7 @@ class DataExportController extends Controller
                     $i->period_start?->toDateString() ?? '',
                     $i->period_end?->toDateString() ?? '',
                     (string) $i->rows_total,
-                    (string) $i->rows_card_expenses,
+                    (string) $i->rows_imported,
                     (string) $i->rows_duplicates,
                     $i->status->value,
                     $i->completed_at?->toDateTimeString() ?? '',
@@ -114,11 +114,13 @@ class DataExportController extends Controller
             ));
 
             $zip->addFromString('bank_transactions.csv', $this->buildCsv(
-                ['id', 'bank_import_id', 'fingerprint', 'operation_date', 'booking_date', 'amount', 'raw_description', 'merchant_key', 'merchant_label', 'payment_instrument', 'bank_category', 'category_id', 'categorization_source', 'confidence', 'status'],
+                ['id', 'bank_import_id', 'fingerprint', 'kind', 'accounting_date', 'operation_date', 'booking_date', 'amount', 'raw_description', 'merchant_key', 'merchant_label', 'payment_instrument', 'bank_category', 'category_id', 'categorization_source', 'confidence', 'status'],
                 $this->collectRows(BankTransaction::query()->orderBy('id')->get(), fn (BankTransaction $t): array => [
                     (string) $t->id,
                     (string) $t->bank_import_id,
                     $t->fingerprint,
+                    $t->kind->value,
+                    $t->accounting_date->toDateString(),
                     $t->operation_date->toDateString(),
                     $t->booking_date?->toDateString() ?? '',
                     (string) $t->amount,
@@ -135,13 +137,14 @@ class DataExportController extends Controller
             ));
 
             $zip->addFromString('merchant_rules.csv', $this->buildCsv(
-                ['id', 'match_type', 'pattern', 'category_id', 'always_ask', 'times_confirmed'],
+                ['id', 'match_type', 'pattern', 'category_id', 'always_ask', 'exclude', 'times_confirmed'],
                 $this->collectRows(MerchantRule::query()->orderBy('id')->get(), fn (MerchantRule $r): array => [
                     (string) $r->id,
                     $r->match_type->value,
                     $r->pattern,
-                    (string) $r->category_id,
+                    (string) ($r->category_id ?? ''),
                     $r->always_ask ? '1' : '0',
+                    $r->exclude ? '1' : '0',
                     (string) $r->times_confirmed,
                 ]),
             ));
@@ -314,7 +317,7 @@ class DataExportController extends Controller
                     'period_start' => $this->nullable($row['period_start']),
                     'period_end' => $this->nullable($row['period_end']),
                     'rows_total' => (int) $row['rows_total'],
-                    'rows_card_expenses' => (int) $row['rows_card_expenses'],
+                    'rows_imported' => (int) $row['rows_imported'],
                     'rows_duplicates' => (int) $row['rows_duplicates'],
                     'status' => $row['status'],
                     'completed_at' => $this->nullable($row['completed_at']),
@@ -324,6 +327,8 @@ class DataExportController extends Controller
                     'id' => (int) $row['id'],
                     'bank_import_id' => (int) $row['bank_import_id'],
                     'fingerprint' => $row['fingerprint'],
+                    'kind' => $row['kind'],
+                    'accounting_date' => $row['accounting_date'],
                     'operation_date' => $row['operation_date'],
                     'booking_date' => $this->nullable($row['booking_date']),
                     'amount' => $row['amount'],
@@ -342,8 +347,9 @@ class DataExportController extends Controller
                     'id' => (int) $row['id'],
                     'match_type' => $row['match_type'],
                     'pattern' => $row['pattern'],
-                    'category_id' => (int) $row['category_id'],
+                    'category_id' => $this->nullable($row['category_id']),
                     'always_ask' => (bool) (int) $row['always_ask'],
+                    'exclude' => (bool) (int) $row['exclude'],
                     'times_confirmed' => (int) $row['times_confirmed'],
                 ]);
 

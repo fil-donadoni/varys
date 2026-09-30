@@ -23,7 +23,7 @@ class BankImportFactory extends Factory
             'period_start' => now()->startOfMonth(),
             'period_end' => now()->endOfMonth(),
             'rows_total' => 0,
-            'rows_card_expenses' => 0,
+            'rows_imported' => 0,
             'rows_duplicates' => 0,
             'status' => BankImportStatus::Review,
         ];

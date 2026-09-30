@@ -81,6 +81,11 @@ it('masks whole cells in person columns', function (): void {
         ->and($anonymizer->anonymizeValue('Mario Rossi', isPersonColumn: true))->toBe('PERSONA_1');
 });
 
+it('masks first names next to a custom mask', function (): void {
+    expect(anonymizer(['Rossi'])->scrubText('Anagrafica Ordinante ROSSI MARIO Note: affitto'))
+        ->toBe('Anagrafica Ordinante PERSONA_1 Note: affitto');
+});
+
 it('applies custom masks', function (): void {
     expect(anonymizer(['Mario Rossi'])->scrubText('Addebito SDD per MARIO ROSSI'))->toBe('Addebito SDD per [NOME]');
 });

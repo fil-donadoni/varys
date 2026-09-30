@@ -20,6 +20,10 @@ class MerchantNormalizer
             return str_contains($value, 'PRIME') ? 'AMAZON PRIME' : 'AMAZON';
         }
 
+        // "S.p.A.", "S P A", "S.R.L." → "SPA", "SRL" so the same company gets one key.
+        $value = (string) preg_replace('/\bS\.?\s?P\.?\s?A\b\.?/u', 'SPA', $value);
+        $value = (string) preg_replace('/\bS\.?\s?R\.?\s?L\b\.?/u', 'SRL', $value);
+
         $value = (string) preg_replace('/\s+-\s+.*$/u', '', $value);
         $value = (string) preg_replace(self::ADDRESS_PATTERN, '', $value);
         $value = (string) preg_replace('/#\S*/u', '', $value);

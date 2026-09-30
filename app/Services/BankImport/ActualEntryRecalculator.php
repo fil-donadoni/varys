@@ -2,14 +2,17 @@
 
 namespace App\Services\BankImport;
 
+use App\Enums\CategoryType;
 use App\Enums\TransactionStatus;
 use App\Models\ActualEntry;
 use App\Models\BankTransaction;
+use App\Models\Category;
 use Carbon\CarbonImmutable;
 
 /**
  * Keeps actual_entries.amount = manual_amount + imported_amount,
- * where imported_amount is the sum of confirmed bank transactions for that category and month.
+ * where imported_amount is the sum of confirmed bank transactions for that category and accounting month.
+ * Bank amounts are signed (negative = money out): expense categories count outflows as positive.
  */
 class ActualEntryRecalculator
 {
@@ -17,11 +20,13 @@ class ActualEntryRecalculator
     {
         $start = CarbonImmutable::create($year, $month, 1);
 
-        $imported = (float) BankTransaction::query()
+        $bankTotal = (float) BankTransaction::query()
             ->where('status', TransactionStatus::Confirmed)
             ->where('category_id', $categoryId)
-            ->whereBetween('operation_date', [$start->toDateString(), $start->endOfMonth()->toDateString()])
+            ->whereBetween('accounting_date', [$start->toDateString(), $start->endOfMonth()->toDateString()])
             ->sum('amount');
+
+        $imported = Category::query()->whereKey($categoryId)->value('type') === CategoryType::Expense ? -$bankTotal : $bankTotal;
 
         $entry = ActualEntry::query()
             ->where('category_id', $categoryId)
@@ -55,7 +60,7 @@ class ActualEntryRecalculator
                 continue;
             }
 
-            $date = $transaction->operation_date;
+            $date = $transaction->accounting_date;
             $targets["{$transaction->category_id}-{$date->year}-{$date->month}"] = [$transaction->category_id, $date->year, $date->month];
         }
 

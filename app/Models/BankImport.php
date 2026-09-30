@@ -35,7 +35,7 @@ class BankImport extends Model
             'period_start' => 'date',
             'period_end' => 'date',
             'rows_total' => 'integer',
-            'rows_card_expenses' => 'integer',
+            'rows_imported' => 'integer',
             'rows_duplicates' => 'integer',
             'completed_at' => 'datetime',
         ];

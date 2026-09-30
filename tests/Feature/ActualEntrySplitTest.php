@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\CategoryType;
 use App\Enums\TransactionStatus;
 use App\Models\ActualEntry;
 use App\Models\BankTransaction;
@@ -10,12 +11,16 @@ use Illuminate\Http\UploadedFile;
 
 uses(RefreshDatabase::class);
 
+/**
+ * @param  float  $amount  Expense-positive for readability; stored with the bank sign.
+ */
 function confirmedTransaction(Category $category, string $date, float $amount): BankTransaction
 {
     return BankTransaction::factory()->confirmed()->create([
         'category_id' => $category->id,
+        'accounting_date' => $date,
         'operation_date' => $date,
-        'amount' => $amount,
+        'amount' => $category->type === CategoryType::Expense ? -$amount : $amount,
     ]);
 }
 
@@ -26,7 +31,7 @@ test('recalculation sums confirmed transactions of the month on top of the manua
     confirmedTransaction($category, '2026-03-01', 20.5);
     confirmedTransaction($category, '2026-03-31', 10);
     confirmedTransaction($category, '2026-04-01', 99);
-    BankTransaction::factory()->create(['category_id' => $category->id, 'operation_date' => '2026-03-10', 'amount' => 50, 'status' => TransactionStatus::ToReview]);
+    BankTransaction::factory()->create(['category_id' => $category->id, 'accounting_date' => '2026-03-10', 'amount' => -50, 'status' => TransactionStatus::ToReview]);
 
     app(ActualEntryRecalculator::class)->recalculate($category->id, 2026, 3);
 
@@ -97,6 +102,31 @@ test('zero manual amount without imported data deletes the entry', function (): 
     ])->assertRedirect();
 
     expect(ActualEntry::count())->toBe(0);
+});
+
+test('income categories sum incoming transactions', function (): void {
+    $category = Category::factory()->income()->create();
+    confirmedTransaction($category, '2026-02-10', 2400);
+    confirmedTransaction($category, '2026-02-20', 1000);
+
+    app(ActualEntryRecalculator::class)->recalculate($category->id, 2026, 2);
+
+    expect(ActualEntry::sole()->amount)->toEqual('3400.00');
+});
+
+test('the accounting date decides the month', function (): void {
+    $category = Category::factory()->expense()->create();
+    BankTransaction::factory()->confirmed()->create([
+        'category_id' => $category->id,
+        'operation_date' => '2025-12-30',
+        'accounting_date' => '2026-01-01',
+        'amount' => -29.99,
+    ]);
+
+    app(ActualEntryRecalculator::class)->recalculate($category->id, 2026, 1);
+
+    expect(ActualEntry::sole()->month)->toBe(1)
+        ->and(ActualEntry::sole()->amount)->toEqual('29.99');
 });
 
 test('backup export and import preserve bank import data and the actual split', function (): void {

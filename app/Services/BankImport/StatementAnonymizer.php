@@ -245,7 +245,8 @@ final class StatementAnonymizer
                 continue;
             }
 
-            $isNameWord = preg_match('/^\p{L}[\p{L}\'.&-]*[,;]?$/u', $token) === 1
+            // "[NOME]" (a custom mask) is part of a name: keep masking the words around it.
+            $isNameWord = (preg_match('/^\p{L}[\p{L}\'.&-]*[,;]?$/u', $token) === 1 || $token === '[NOME]')
                 && ! in_array($lower, self::NAME_STOP_WORDS, true);
 
             if (! $isNameWord || $nameWords >= 4) {

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\CategorizationSource;
+use App\Enums\TransactionKind;
 use App\Enums\TransactionStatus;
 use Database\Factories\BankTransactionFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -29,6 +30,8 @@ class BankTransaction extends Model
     protected function casts(): array
     {
         return [
+            'kind' => TransactionKind::class,
+            'accounting_date' => 'date',
             'operation_date' => 'date',
             'booking_date' => 'date',
             'amount' => 'decimal:2',
