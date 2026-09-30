@@ -4,6 +4,7 @@ namespace App\Http\Controllers\App;
 
 use App\Http\Controllers\Controller;
 use App\Models\ActualEntry;
+use App\Models\ActualItem;
 use App\Models\BankCategoryMapping;
 use App\Models\BankImport;
 use App\Models\BankTransaction;
@@ -13,6 +14,7 @@ use App\Models\Category;
 use App\Models\MerchantRule;
 use App\Models\Reconciliation;
 use App\Models\Setting;
+use App\Services\ActualItemBackfill;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -81,6 +83,17 @@ class DataExportController extends Controller
                     (string) $e->imported_amount,
                     $e->description ?? '',
                     $e->notes ?? '',
+                ]),
+            ));
+
+            $zip->addFromString('actual_items.csv', $this->buildCsv(
+                ['id', 'category_id', 'date', 'description', 'amount'],
+                $this->collectRows(ActualItem::query()->orderBy('id')->get(), fn (ActualItem $i): array => [
+                    (string) $i->id,
+                    (string) $i->category_id,
+                    $i->date->toDateString(),
+                    $i->description,
+                    (string) $i->amount,
                 ]),
             ));
 
@@ -212,6 +225,7 @@ class DataExportController extends Controller
                 MerchantRule::query()->delete();
                 BankCategoryMapping::query()->delete();
                 Reconciliation::query()->delete();
+                ActualItem::query()->delete();
                 ActualEntry::query()->delete();
                 BudgetEntry::query()->delete();
                 Category::query()->delete();
@@ -289,6 +303,19 @@ class DataExportController extends Controller
                             'updated_at' => $now,
                         ]);
                     }
+                }
+
+                // Import actual items; backups made before they existed only have the manual amount.
+                if ($zip->getFromName('actual_items.csv') !== false) {
+                    $this->insertRows($zip, 'actual_items', fn (array $row): array => [
+                        'id' => (int) $row['id'],
+                        'category_id' => (int) $row['category_id'],
+                        'date' => $row['date'],
+                        'description' => $row['description'],
+                        'amount' => $row['amount'],
+                    ]);
+                } else {
+                    app(ActualItemBackfill::class)->fromManualAmounts();
                 }
 
                 // Import reconciliations
@@ -373,6 +400,7 @@ class DataExportController extends Controller
                 $this->resetSequence('budget_entries');
                 $this->resetSequence('budget_entry_items');
                 $this->resetSequence('actual_entries');
+                $this->resetSequence('actual_items');
                 $this->resetSequence('reconciliations');
                 $this->resetSequence('bank_imports');
                 $this->resetSequence('bank_transactions');
