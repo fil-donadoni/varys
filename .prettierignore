@@ -7,3 +7,4 @@ resources/js/routes/
 resources/js/components/ui/*
 *.blade.php
 .claude/
+composer.json

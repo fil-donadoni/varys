@@ -1,18 +1,12 @@
 import { Head, Link, useForm } from '@inertiajs/react';
 import { ArrowLeft } from 'lucide-react';
-import AppLayout from '@/layouts/app-layout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import AppLayout from '@/layouts/app-layout';
 
 interface Category {
     id: number;
@@ -64,8 +58,7 @@ export default function EditCategory({ category, types }: Props) {
                     <div>
                         <h1 className="text-2xl font-bold tracking-tight">Modifica Categoria</h1>
                         <p className="text-sm text-muted-foreground">
-                            Modifica i dettagli di{' '}
-                            <span className="font-medium text-foreground">{category.name}</span>.
+                            Modifica i dettagli di <span className="font-medium text-foreground">{category.name}</span>.
                         </p>
                     </div>
                 </div>
@@ -98,11 +91,7 @@ export default function EditCategory({ category, types }: Props) {
 
                             <div className="space-y-1.5">
                                 <Label htmlFor="type">Tipo</Label>
-                                <Select
-                                    value={data.type}
-                                    onValueChange={(value) => setData('type', value)}
-                                    required
-                                >
+                                <Select value={data.type} onValueChange={(value) => setData('type', value)} required>
                                     <SelectTrigger
                                         id="type"
                                         aria-invalid={!!errors.type}
@@ -130,9 +119,7 @@ export default function EditCategory({ category, types }: Props) {
                                     <Checkbox
                                         id="is_invoiced"
                                         checked={data.is_invoiced}
-                                        onCheckedChange={(checked) =>
-                                            setData('is_invoiced', checked === true)
-                                        }
+                                        onCheckedChange={(checked) => setData('is_invoiced', checked === true)}
                                     />
                                     <Label htmlFor="is_invoiced" className="cursor-pointer">
                                         Fatturata
@@ -152,9 +139,7 @@ export default function EditCategory({ category, types }: Props) {
                                         aria-invalid={!!errors.color}
                                         aria-describedby={errors.color ? 'color-error' : undefined}
                                     />
-                                    <span className="font-mono text-sm text-muted-foreground">
-                                        {data.color}
-                                    </span>
+                                    <span className="font-mono text-sm text-muted-foreground">{data.color}</span>
                                 </div>
                                 {errors.color && (
                                     <p id="color-error" className="text-sm text-destructive">
@@ -174,9 +159,7 @@ export default function EditCategory({ category, types }: Props) {
                                     onChange={(e) => setData('sort_order', e.target.value)}
                                     className="w-32"
                                     aria-invalid={!!errors.sort_order}
-                                    aria-describedby={
-                                        errors.sort_order ? 'sort-order-error' : undefined
-                                    }
+                                    aria-describedby={errors.sort_order ? 'sort-order-error' : undefined}
                                 />
                                 {errors.sort_order && (
                                     <p id="sort-order-error" className="text-sm text-destructive">

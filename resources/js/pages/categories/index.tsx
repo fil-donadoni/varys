@@ -1,9 +1,8 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { Check, Pencil, Plus, Trash2 } from 'lucide-react';
-import AppLayout from '@/layouts/app-layout';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import AppLayout from '@/layouts/app-layout';
 
 interface Category {
     id: number;
@@ -19,12 +18,7 @@ interface Props {
     types: Array<{ value: string; label: string }>;
 }
 
-const TYPE_LABEL: Record<string, string> = {
-    income: 'Entrata',
-    expense: 'Uscita',
-};
-
-export default function CategoriesIndex({ categories, types }: Props) {
+export default function CategoriesIndex({ categories }: Props) {
     const income = categories.filter((c) => c.type === 'income');
     const expense = categories.filter((c) => c.type === 'expense');
 

@@ -126,7 +126,6 @@ export default function Dashboard({
     monthlyData,
     categoryData,
     alerts,
-    currentMonth,
     invoicedBudgetTotal,
     invoiceLimit,
     openingBalance,
@@ -310,7 +309,11 @@ export default function Dashboard({
                                 </p>
                                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                     <span>Budget: {formatCurrency(totalBudgetExpense)}</span>
-                                    <VarianceBadge budget={totalBudgetExpense} actual={totalEffectiveExpense} type="expense" />
+                                    <VarianceBadge
+                                        budget={totalBudgetExpense}
+                                        actual={totalEffectiveExpense}
+                                        type="expense"
+                                    />
                                 </div>
                                 {actualMonths.length < 12 && (
                                     <p className="text-[10px] text-muted-foreground">

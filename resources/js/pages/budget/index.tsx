@@ -140,11 +140,16 @@ export default function BudgetIndex({ year, categories, entries, invoicedCategor
     const [cells, setCells] = useState<CellState>(() => buildInitialCells(categories, entries));
     const initialCellsRef = useRef<CellState>(buildInitialCells(categories, entries));
 
+    // Reset the cells when the server sends new data (year change or reload after save).
+    const [sourceProps, setSourceProps] = useState({ categories, entries });
+    if (sourceProps.categories !== categories || sourceProps.entries !== entries) {
+        setSourceProps({ categories, entries });
+        setCells(buildInitialCells(categories, entries));
+    }
+
     useEffect(() => {
-        const initial = buildInitialCells(categories, entries);
-        setCells(initial);
-        initialCellsRef.current = initial;
-    }, [year, categories, entries]);
+        initialCellsRef.current = buildInitialCells(categories, entries);
+    }, [categories, entries]);
 
     const handleCellChange = useCallback((catId: number, month: number, value: string) => {
         const key: CellKey = `${catId}-${month}`;

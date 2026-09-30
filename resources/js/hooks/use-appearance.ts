@@ -37,14 +37,11 @@ export function initializeTheme(): void {
 }
 
 export function useAppearance() {
-    const [appearance, setAppearanceState] = useState<Appearance>('system');
+    const [appearance, setAppearanceState] = useState<Appearance>(
+        () => (getCookieValue('appearance') as Appearance | null) ?? 'system',
+    );
 
     useEffect(() => {
-        const saved = getCookieValue('appearance') as Appearance | null;
-        if (saved) {
-            setAppearanceState(saved);
-        }
-
         const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
         const handleChange = () => {
             const current = (getCookieValue('appearance') as Appearance) || 'system';

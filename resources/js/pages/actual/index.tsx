@@ -163,11 +163,16 @@ export default function ActualIndex({ year, month, categories, entries, budgetEn
     const initialFormRef = useRef<FormState>(buildInitialForm(categories, entries));
     const imported = buildImportedAmounts(entries);
 
+    // Reset the form when the server sends new data (month change or reload after save).
+    const [sourceProps, setSourceProps] = useState({ categories, entries });
+    if (sourceProps.categories !== categories || sourceProps.entries !== entries) {
+        setSourceProps({ categories, entries });
+        setForm(buildInitialForm(categories, entries));
+    }
+
     useEffect(() => {
-        const initial = buildInitialForm(categories, entries);
-        setForm(initial);
-        initialFormRef.current = initial;
-    }, [year, month, categories, entries]);
+        initialFormRef.current = buildInitialForm(categories, entries);
+    }, [categories, entries]);
 
     const handleChange = useCallback((catId: number, field: keyof RowState, value: string) => {
         setForm((prev) => ({
