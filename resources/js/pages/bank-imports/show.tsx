@@ -335,6 +335,8 @@ function MerchantRows({
         ),
     ];
     const resolved = group.transactions.every((t) => t.status !== 'to_review');
+    // A proposed category (AI, similar memory, bank) still waiting for the user: one click confirms it.
+    const canConfirm = !readOnly && !group.mixed && group.categoryId !== null && !resolved;
 
     return (
         <Fragment>
@@ -373,24 +375,32 @@ function MerchantRows({
                     {group.mixed ? (
                         <span className="text-muted-foreground">Categorie diverse: apri il dettaglio</span>
                     ) : (
-                        <CategoryCombobox
-                            categories={categories}
-                            amount={group.total}
-                            value={group.categoryId}
-                            excluded={allExcluded}
-                            disabled={readOnly}
-                            ariaLabel={`Categoria ${group.merchantKey}`}
-                            onChange={(categoryId, exclude) => assign(first, categoryId, exclude, true)}
-                            onCreate={(name) =>
-                                openCategoryDialog({
-                                    transaction: first,
-                                    applyToMerchant: true,
-                                    name,
-                                    merchantLabel: group.merchantKey,
-                                    allowIncome: group.total > 0,
-                                })
-                            }
-                        />
+                        <div className="flex items-center gap-1">
+                            <CategoryCombobox
+                                categories={categories}
+                                amount={group.total}
+                                value={group.categoryId}
+                                excluded={allExcluded}
+                                disabled={readOnly}
+                                ariaLabel={`Categoria ${group.merchantKey}`}
+                                onChange={(categoryId, exclude) => assign(first, categoryId, exclude, true)}
+                                onCreate={(name) =>
+                                    openCategoryDialog({
+                                        transaction: first,
+                                        applyToMerchant: true,
+                                        name,
+                                        merchantLabel: group.merchantKey,
+                                        allowIncome: group.total > 0,
+                                    })
+                                }
+                            />
+                            {canConfirm && (
+                                <ConfirmButton
+                                    label={`Conferma categoria per ${group.merchantKey}`}
+                                    onClick={() => assign(first, group.categoryId, false, true)}
+                                />
+                            )}
+                        </div>
                     )}
                 </TableCell>
                 <TableCell>
@@ -422,24 +432,34 @@ function MerchantRows({
                         <TableCell />
                         <TableCell className="text-right tabular-nums">{formatCurrency(transaction.amount)}</TableCell>
                         <TableCell className="p-1">
-                            <CategoryCombobox
-                                categories={categories}
-                                amount={transaction.amount}
-                                value={transaction.category_id}
-                                excluded={transaction.status === 'excluded'}
-                                disabled={readOnly}
-                                ariaLabel={`Categoria movimento del ${formatDate(transaction.accounting_date)}`}
-                                onChange={(categoryId, exclude) => assign(transaction, categoryId, exclude, false)}
-                                onCreate={(name) =>
-                                    openCategoryDialog({
-                                        transaction,
-                                        applyToMerchant: false,
-                                        name,
-                                        merchantLabel: `${group.merchantKey} del ${formatDate(transaction.accounting_date)}`,
-                                        allowIncome: transaction.amount > 0,
-                                    })
-                                }
-                            />
+                            <div className="flex items-center gap-1">
+                                <CategoryCombobox
+                                    categories={categories}
+                                    amount={transaction.amount}
+                                    value={transaction.category_id}
+                                    excluded={transaction.status === 'excluded'}
+                                    disabled={readOnly}
+                                    ariaLabel={`Categoria movimento del ${formatDate(transaction.accounting_date)}`}
+                                    onChange={(categoryId, exclude) => assign(transaction, categoryId, exclude, false)}
+                                    onCreate={(name) =>
+                                        openCategoryDialog({
+                                            transaction,
+                                            applyToMerchant: false,
+                                            name,
+                                            merchantLabel: `${group.merchantKey} del ${formatDate(transaction.accounting_date)}`,
+                                            allowIncome: transaction.amount > 0,
+                                        })
+                                    }
+                                />
+                                {!readOnly &&
+                                    transaction.status === 'to_review' &&
+                                    transaction.category_id !== null && (
+                                        <ConfirmButton
+                                            label={`Conferma categoria del movimento del ${formatDate(transaction.accounting_date)}`}
+                                            onClick={() => assign(transaction, transaction.category_id, false, false)}
+                                        />
+                                    )}
+                            </div>
                         </TableCell>
                         <TableCell>
                             {transaction.source_label && (
@@ -479,5 +499,20 @@ function AiIndicator({ ai, disabled, onToggle }: { ai: AiRowState; disabled: boo
         >
             <Sparkles className="size-3" /> AI
         </button>
+    );
+}
+
+function ConfirmButton({ label, onClick }: { label: string; onClick: () => void }) {
+    return (
+        <Button
+            variant="outline"
+            size="sm"
+            className="h-7 gap-1 px-2 text-xs text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
+            onClick={onClick}
+            aria-label={label}
+            title="Accetta la categoria proposta"
+        >
+            <Check className="size-3.5" /> Conferma
+        </Button>
     );
 }

@@ -30,6 +30,17 @@ class BankImportReviewer
                 ->whereIn('status', [TransactionStatus::ToReview, TransactionStatus::Auto, TransactionStatus::Excluded])
             : BankTransaction::query()->whereKey($transaction->id);
 
+        if (! $exclude && $categoryId !== null) {
+            // Confirming a proposed category keeps where it came from (AI, similar memory, bank).
+            (clone $query)
+                ->where('category_id', $categoryId)
+                ->where('status', TransactionStatus::ToReview)
+                ->whereNotNull('categorization_source')
+                ->update(['status' => TransactionStatus::Auto]);
+
+            $query->where(fn ($q) => $q->where('category_id', '!=', $categoryId)->orWhereNull('category_id')->orWhere('status', '!=', TransactionStatus::Auto));
+        }
+
         $query->update([
             'category_id' => $exclude ? null : $categoryId,
             'categorization_source' => CategorizationSource::Manual,

@@ -324,3 +324,30 @@ test('merchants remembered from another bank match even when written differently
         ->status->toBe(TransactionStatus::ToReview)
         ->category_id->toBe($food->id);
 });
+
+test('confirming a proposed category keeps its origin', function (): void {
+    $category = Category::factory()->expense()->create();
+    $other = Category::factory()->expense()->create();
+    uploadStatement(BankStatementFixtures::ing());
+    BankTransaction::query()->where('merchant_key', 'AMAZON')->update([
+        'category_id' => $category->id,
+        'categorization_source' => CategorizationSource::Llm,
+        'confidence' => 0.6,
+        'status' => TransactionStatus::ToReview,
+    ]);
+    $amazon = transactionFor('AMAZON');
+
+    $this->patch("/bank-transactions/{$amazon->id}", ['category_id' => $category->id, 'exclude' => false, 'apply_to_merchant' => true])
+        ->assertSessionHasNoErrors();
+
+    $rows = BankTransaction::query()->where('merchant_key', 'AMAZON')->get();
+    expect($rows->pluck('status')->unique()->all())->toBe([TransactionStatus::Auto])
+        ->and($rows->pluck('categorization_source')->unique()->all())->toBe([CategorizationSource::Llm])
+        ->and((float) $rows->first()->confidence)->toBe(0.6);
+
+    // Choosing a different category is a manual decision.
+    $this->patch("/bank-transactions/{$amazon->id}", ['category_id' => $other->id, 'exclude' => false, 'apply_to_merchant' => true]);
+
+    expect(BankTransaction::query()->where('merchant_key', 'AMAZON')->pluck('categorization_source')->unique()->all())
+        ->toBe([CategorizationSource::Manual]);
+});
