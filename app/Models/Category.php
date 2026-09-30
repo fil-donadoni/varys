@@ -42,4 +42,12 @@ class Category extends Model
     {
         return $this->hasMany(ActualEntry::class);
     }
+
+    /**
+     * @return HasMany<ActualItem, $this>
+     */
+    public function actualItems(): HasMany
+    {
+        return $this->hasMany(ActualItem::class);
+    }
 }
