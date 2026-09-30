@@ -113,7 +113,7 @@ class BankImportController extends Controller
                     ->filter(fn (array $kind): bool => $kind['count'] > 0)
                     ->values(),
                 'local' => [
-                    'memory' => $transactions->whereIn('source', [CategorizationSource::Memory->value, CategorizationSource::Keyword->value])->where('status', '!=', TransactionStatus::Excluded->value)->count(),
+                    'memory' => $transactions->whereIn('source', [CategorizationSource::Memory->value, CategorizationSource::SimilarMemory->value, CategorizationSource::Keyword->value])->where('status', '!=', TransactionStatus::Excluded->value)->count(),
                     'excluded' => $transactions->where('status', TransactionStatus::Excluded->value)->count(),
                     'bank' => $transactions->where('source', CategorizationSource::Bank->value)->count(),
                 ],

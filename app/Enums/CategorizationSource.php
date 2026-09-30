@@ -5,6 +5,7 @@ namespace App\Enums;
 enum CategorizationSource: string
 {
     case Memory = 'memory';
+    case SimilarMemory = 'similar';
     case Keyword = 'keyword';
     case Bank = 'bank';
     case Llm = 'llm';
@@ -14,6 +15,7 @@ enum CategorizationSource: string
     {
         return match ($this) {
             self::Memory => 'Memoria',
+            self::SimilarMemory => 'Memoria (simile)',
             self::Keyword => 'Regola',
             self::Bank => 'Banca',
             self::Llm => 'AI',

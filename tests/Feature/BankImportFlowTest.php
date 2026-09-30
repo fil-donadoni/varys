@@ -96,7 +96,7 @@ test('bank categories are only a suggestion', function (): void {
 
     uploadStatement(BankStatementFixtures::intesa());
 
-    expect(transactionFor('FARMACIA DELLA BASILI. MAGENTA'))
+    expect(transactionFor('FARMACIA DELLA BASILI MAGENTA'))
         ->status->toBe(TransactionStatus::ToReview)
         ->categorization_source->toBe(CategorizationSource::Bank)
         ->category_id->toBe($health->id);
@@ -298,4 +298,29 @@ test('creating a category on the fly validates name and type', function (): void
         ->assertSessionHasErrors('type');
 
     expect(Category::count())->toBe(1);
+});
+
+test('merchants remembered from another bank match even when written differently', function (): void {
+    $health = Category::factory()->expense()->create();
+    $food = Category::factory()->expense()->create();
+    // Rules as the ING import saved them.
+    MerchantRule::factory()->create(['pattern' => 'FARMACIA DELLA BASILI', 'category_id' => $health->id]);
+    MerchantRule::factory()->create(['pattern' => 'ANTICO', 'category_id' => $food->id]);
+    MerchantRule::factory()->create(['pattern' => "IPER STATION MAGENTA CORSO'", 'category_id' => $food->id]);
+
+    uploadStatement(BankStatementFixtures::intesa());
+
+    // Two or more words in common: applied.
+    expect(transactionFor('FARMACIA DELLA BASILI MAGENTA'))
+        ->status->toBe(TransactionStatus::Auto)
+        ->categorization_source->toBe(CategorizationSource::SimilarMemory)
+        ->category_id->toBe($health->id)
+        // The remembered merchant can also be the longer one.
+        ->and(transactionFor('IPER STATION MAGENTA'))
+        ->status->toBe(TransactionStatus::Auto)
+        ->category_id->toBe($food->id)
+        // A single word in common is only proposed.
+        ->and(transactionFor('ANTICO VINAIO ITALIA SRL'))
+        ->status->toBe(TransactionStatus::ToReview)
+        ->category_id->toBe($food->id);
 });

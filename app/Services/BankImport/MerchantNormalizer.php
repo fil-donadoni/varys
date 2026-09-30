@@ -33,9 +33,18 @@ class MerchantNormalizer
             fn (string $token): bool => $token !== '' && ! $this->isCodeToken($token),
         );
 
-        $key = trim(implode(' ', $tokens), " \t-.,*/");
+        $key = self::canonical(trim(implode(' ', $tokens), " \t-.,*/"));
 
         return $key !== '' ? $key : mb_strtoupper(trim($label));
+    }
+
+    /**
+     * Drops trailing apostrophes and dots from words, so "CONTROTEMPO CAFE'" and "CONTROTEMPO CAFE" are the same key.
+     * Also applied to stored rule patterns when comparing, so older rules keep matching.
+     */
+    public static function canonical(string $key): string
+    {
+        return trim((string) preg_replace("/['.]+(?=\\s|$)/u", '', mb_strtoupper($key)));
     }
 
     /**

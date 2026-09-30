@@ -27,4 +27,8 @@ it('normalizes merchant labels', function (string $label, string $expected): voi
     ['VIVIGAS S P A', 'VIVIGAS SPA'],
     ['DM GROUP S.R.L.', 'DM GROUP SRL'],
     ['SPAZIO VERDE', 'SPAZIO VERDE'],
+    ["Controtempo Cafe' Via Pales", 'CONTROTEMPO CAFE'],
+    ['Farmacia Della Basili. Magenta', 'FARMACIA DELLA BASILI MAGENTA'],
+    ["L'AGRICOLA", "L'AGRICOLA"],
+    ['Neon.tech', 'NEON.TECH'],
 ]);
