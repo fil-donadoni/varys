@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\App\ActualEntryController;
+use App\Http\Controllers\App\ActualItemController;
 use App\Http\Controllers\App\BankImportController;
 use App\Http\Controllers\App\BankTransactionController;
 use App\Http\Controllers\App\BudgetEntryController;
@@ -20,6 +21,7 @@ Route::post('budget/bulk', [BudgetEntryController::class, 'bulkUpsert'])->name('
 Route::put('budget/items', [BudgetEntryController::class, 'syncItems'])->name('budget.sync-items');
 
 Route::get('actual', [ActualEntryController::class, 'index'])->name('actual.index');
+Route::resource('actual-items', ActualItemController::class)->only(['store', 'update', 'destroy']);
 
 Route::get('reconciliations', [ReconciliationController::class, 'index'])->name('reconciliations.index');
 Route::post('reconciliations/calculate', [ReconciliationController::class, 'calculateBalance'])->name('reconciliations.calculate');
