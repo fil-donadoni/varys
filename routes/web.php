@@ -35,6 +35,7 @@ Route::resource('bank-imports', BankImportController::class)->only(['index', 'st
 Route::post('bank-imports/{bank_import}/categorize', [BankImportController::class, 'categorize'])->name('bank-imports.categorize');
 Route::post('bank-imports/{bank_import}/complete', [BankImportController::class, 'complete'])->name('bank-imports.complete');
 Route::patch('bank-transactions/{bank_transaction}', [BankTransactionController::class, 'update'])->name('bank-transactions.update');
+Route::patch('bank-transactions/{bank_transaction}/reassign', [BankTransactionController::class, 'reassign'])->name('bank-transactions.reassign');
 Route::post('bank-transactions/{bank_transaction}/category', [BankTransactionController::class, 'storeCategory'])->name('bank-transactions.store-category');
 
 Route::get('data/export', [DataExportController::class, 'export'])->name('data.export');

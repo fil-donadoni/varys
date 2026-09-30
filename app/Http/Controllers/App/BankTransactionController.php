@@ -3,14 +3,19 @@
 namespace App\Http\Controllers\App;
 
 use App\Enums\BankImportStatus;
+use App\Enums\CategorizationSource;
 use App\Enums\CategoryType;
+use App\Enums\TransactionStatus;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\App\ReassignBankTransactionRequest;
 use App\Http\Requests\App\StoreTransactionCategoryRequest;
 use App\Http\Requests\App\UpdateBankTransactionRequest;
 use App\Models\BankTransaction;
 use App\Models\Category;
+use App\Services\BankImport\ActualEntryRecalculator;
 use App\Services\BankImport\BankImportReviewer;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\DB;
 
 class BankTransactionController extends Controller
 {
@@ -57,5 +62,40 @@ class BankTransactionController extends Controller
         $reviewer->assign($bankTransaction, $category->id, false, $request->boolean('apply_to_merchant'));
 
         return back()->with('notice', "Categoria \"{$category->name}\" creata e assegnata.");
+    }
+
+    /**
+     * Fixes an already confirmed movement from the actual page: other category or excluded.
+     */
+    public function reassign(ReassignBankTransactionRequest $request, BankTransaction $bankTransaction, ActualEntryRecalculator $recalculator): RedirectResponse
+    {
+        if ($bankTransaction->status !== TransactionStatus::Confirmed) {
+            return back()->withErrors(['transaction' => 'Si possono modificare qui solo i movimenti confermati.']);
+        }
+
+        $exclude = $request->boolean('exclude');
+        $categoryId = $exclude ? null : $request->integer('category_id');
+
+        if ($categoryId !== null && (float) $bankTransaction->amount < 0 && Category::query()->whereKey($categoryId)->value('type') === CategoryType::Income) {
+            return back()->withErrors(['transaction' => 'Un\'uscita può andare solo in una categoria di spesa.']);
+        }
+
+        $previousCategoryId = $bankTransaction->category_id;
+
+        DB::transaction(function () use ($bankTransaction, $exclude, $categoryId, $previousCategoryId, $recalculator): void {
+            $bankTransaction->update([
+                'category_id' => $categoryId,
+                'categorization_source' => CategorizationSource::Manual,
+                'confidence' => null,
+                'status' => $exclude ? TransactionStatus::Excluded : TransactionStatus::Confirmed,
+            ]);
+
+            $date = $bankTransaction->accounting_date;
+            foreach (array_unique(array_filter([$previousCategoryId, $categoryId])) as $affected) {
+                $recalculator->recalculate($affected, $date->year, $date->month);
+            }
+        });
+
+        return back()->with('success', $exclude ? 'Movimento escluso.' : 'Movimento spostato.');
     }
 }
