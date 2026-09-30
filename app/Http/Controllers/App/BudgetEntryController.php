@@ -51,10 +51,20 @@ class BudgetEntryController extends Controller
     {
         $validated = $request->validated();
 
-        /** @var array<int, array{category_id: int, month: int, amount: float, notes?: string|null}> $entries */
+        /** @var array<int, array{category_id: int, month: int, amount: float|null, notes?: string|null}> $entries */
         $entries = $validated['entries'];
 
         foreach ($entries as $entry) {
+            if ($entry['amount'] === null) {
+                BudgetEntry::query()
+                    ->where('category_id', $entry['category_id'])
+                    ->where('year', $validated['year'])
+                    ->where('month', $entry['month'])
+                    ->delete();
+
+                continue;
+            }
+
             BudgetEntry::updateOrCreate(
                 [
                     'category_id' => $entry['category_id'],

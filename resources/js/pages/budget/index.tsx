@@ -135,8 +135,7 @@ export default function BudgetIndex({ year, categories, entries, invoicedCategor
 
             if (currentValue === initialValue) return;
 
-            const amount = currentValue !== '' ? String(parseAmount(currentValue)) : null;
-            if (amount === null || amount === '0') return;
+            const amount = currentValue.trim() !== '' ? String(parseAmount(currentValue)) : null;
 
             const existingEntry = entries[catId]?.[month];
 

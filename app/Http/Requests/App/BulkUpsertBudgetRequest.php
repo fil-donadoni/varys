@@ -16,7 +16,7 @@ class BulkUpsertBudgetRequest extends FormRequest
             'entries' => ['required', 'array'],
             'entries.*.category_id' => ['required', 'exists:categories,id'],
             'entries.*.month' => ['required', 'integer', 'min:1', 'max:12'],
-            'entries.*.amount' => ['required', 'numeric', 'min:0'],
+            'entries.*.amount' => ['present', 'nullable', 'numeric', 'min:0'],
             'entries.*.notes' => ['nullable', 'string', 'max:1000'],
         ];
     }
