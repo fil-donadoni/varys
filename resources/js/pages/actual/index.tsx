@@ -19,6 +19,8 @@ interface Category {
 interface ActualEntry {
     id: number;
     amount: string;
+    manual_amount: string;
+    imported_amount: string;
     description: string | null;
     notes: string | null;
 }
@@ -43,12 +45,28 @@ type RowState = {
 
 type FormState = Record<number, RowState>;
 
+type ImportedAmounts = Record<number, number>;
+
+function buildImportedAmounts(entries: Record<number, ActualEntry>): ImportedAmounts {
+    const imported: ImportedAmounts = {};
+    for (const [catId, entry] of Object.entries(entries)) {
+        imported[Number(catId)] = parseAmount(entry.imported_amount);
+    }
+    return imported;
+}
+
+/** Effective amount = manual part (editable) + part imported from bank transactions. */
+function rowTotal(form: FormState, imported: ImportedAmounts, catId: number): number {
+    return parseAmount(form[catId]?.amount ?? '') + (imported[catId] ?? 0);
+}
+
 function buildInitialForm(categories: Category[], entries: Record<number, ActualEntry>): FormState {
     const form: FormState = {};
     for (const cat of categories) {
         const entry = entries[cat.id];
         form[cat.id] = {
-            amount: entry ? entry.amount : '',
+            // The input edits only the manual part; hide a zero manual part when data was imported.
+            amount: entry && parseAmount(entry.manual_amount) !== 0 ? entry.manual_amount : '',
             description: entry?.description ?? '',
         };
     }
@@ -114,12 +132,13 @@ interface GroupTotalsRowProps {
     label: string;
     categories: Category[];
     form: FormState;
+    imported: ImportedAmounts;
     budgetEntries: Record<number, BudgetEntry>;
     type: 'income' | 'expense';
 }
 
-function GroupTotalsRow({ label, categories, form, budgetEntries, type }: GroupTotalsRowProps) {
-    const actualTotal = categories.reduce((sum, cat) => sum + parseAmount(form[cat.id]?.amount ?? ''), 0);
+function GroupTotalsRow({ label, categories, form, imported, budgetEntries, type }: GroupTotalsRowProps) {
+    const actualTotal = categories.reduce((sum, cat) => sum + rowTotal(form, imported, cat.id), 0);
     const budgetTotal = categories.reduce((sum, cat) => sum + parseAmount(budgetEntries[cat.id]?.amount ?? '0'), 0);
 
     return (
@@ -142,6 +161,7 @@ function GroupTotalsRow({ label, categories, form, budgetEntries, type }: GroupT
 export default function ActualIndex({ year, month, categories, entries, budgetEntries }: Props) {
     const [form, setForm] = useState<FormState>(() => buildInitialForm(categories, entries));
     const initialFormRef = useRef<FormState>(buildInitialForm(categories, entries));
+    const imported = buildImportedAmounts(entries);
 
     useEffect(() => {
         const initial = buildInitialForm(categories, entries);
@@ -223,8 +243,8 @@ export default function ActualIndex({ year, month, categories, entries, budgetEn
         .filter((c) => c.type === 'expense')
         .sort((a, b) => a.sort_order - b.sort_order);
 
-    const allIncomeActual = incomeCategories.reduce((sum, cat) => sum + parseAmount(form[cat.id]?.amount ?? ''), 0);
-    const allExpenseActual = expenseCategories.reduce((sum, cat) => sum + parseAmount(form[cat.id]?.amount ?? ''), 0);
+    const allIncomeActual = incomeCategories.reduce((sum, cat) => sum + rowTotal(form, imported, cat.id), 0);
+    const allExpenseActual = expenseCategories.reduce((sum, cat) => sum + rowTotal(form, imported, cat.id), 0);
     const allIncomeBudget = incomeCategories.reduce(
         (sum, cat) => sum + parseAmount(budgetEntries[cat.id]?.amount ?? '0'),
         0,
@@ -343,6 +363,7 @@ export default function ActualIndex({ year, month, categories, entries, budgetEn
                                     category={cat}
                                     rowState={form[cat.id] ?? { amount: '', description: '' }}
                                     budgetEntry={budgetEntries[cat.id]}
+                                    imported={imported[cat.id] ?? 0}
                                     onChange={handleChange}
                                     onBlur={handleRowBlur}
                                 />
@@ -358,6 +379,7 @@ export default function ActualIndex({ year, month, categories, entries, budgetEn
                                 label="Totale Entrate"
                                 categories={incomeCategories}
                                 form={form}
+                                imported={imported}
                                 budgetEntries={budgetEntries}
                                 type="income"
                             />
@@ -370,6 +392,7 @@ export default function ActualIndex({ year, month, categories, entries, budgetEn
                                     category={cat}
                                     rowState={form[cat.id] ?? { amount: '', description: '' }}
                                     budgetEntry={budgetEntries[cat.id]}
+                                    imported={imported[cat.id] ?? 0}
                                     onChange={handleChange}
                                     onBlur={handleRowBlur}
                                 />
@@ -385,6 +408,7 @@ export default function ActualIndex({ year, month, categories, entries, budgetEn
                                 label="Totale Uscite"
                                 categories={expenseCategories}
                                 form={form}
+                                imported={imported}
                                 budgetEntries={budgetEntries}
                                 type="expense"
                             />
@@ -440,13 +464,14 @@ interface ActualRowProps {
     category: Category;
     rowState: RowState;
     budgetEntry: BudgetEntry | undefined;
+    imported: number;
     onChange: (catId: number, field: keyof RowState, value: string) => void;
     onBlur: (catId: number) => void;
 }
 
-function ActualRow({ category, rowState, budgetEntry, onChange, onBlur }: ActualRowProps) {
+function ActualRow({ category, rowState, budgetEntry, imported, onChange, onBlur }: ActualRowProps) {
     const budgetAmount = parseAmount(budgetEntry?.amount ?? '0');
-    const actualAmount = parseAmount(rowState.amount);
+    const actualAmount = parseAmount(rowState.amount) + imported;
 
     return (
         <TableRow className="group">
@@ -477,6 +502,11 @@ function ActualRow({ category, rowState, budgetEntry, onChange, onBlur }: Actual
                     placeholder="0,00"
                     aria-label={`Effettivo ${category.name}`}
                 />
+                {imported !== 0 && (
+                    <p className="mt-0.5 text-right text-[10px] text-muted-foreground tabular-nums">
+                        + {formatCurrency(imported)} da banca = {formatCurrency(actualAmount)}
+                    </p>
+                )}
             </TableCell>
 
             {/* Variance */}

@@ -8,7 +8,15 @@ use Database\Factories\BankImportFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
+/**
+ * @property Bank $bank
+ * @property BankImportStatus $status
+ * @property Carbon|null $period_start
+ * @property Carbon|null $period_end
+ * @property Carbon|null $completed_at
+ */
 class BankImport extends Model
 {
     /** @use HasFactory<BankImportFactory> */

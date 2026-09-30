@@ -8,6 +8,9 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * @property MerchantMatchType $match_type
+ */
 class MerchantRule extends Model
 {
     /** @use HasFactory<MerchantRuleFactory> */

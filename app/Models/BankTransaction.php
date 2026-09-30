@@ -8,7 +8,14 @@ use Database\Factories\BankTransactionFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
+/**
+ * @property Carbon $operation_date
+ * @property Carbon|null $booking_date
+ * @property CategorizationSource|null $categorization_source
+ * @property TransactionStatus $status
+ */
 class BankTransaction extends Model
 {
     /** @use HasFactory<BankTransactionFactory> */

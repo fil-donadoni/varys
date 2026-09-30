@@ -7,6 +7,7 @@ use App\Http\Requests\App\BulkUpsertActualRequest;
 use App\Models\ActualEntry;
 use App\Models\BudgetEntry;
 use App\Models\Category;
+use App\Services\BankImport\ActualEntryRecalculator;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -48,34 +49,30 @@ class ActualEntryController extends Controller
         ]);
     }
 
-    public function bulkUpsert(BulkUpsertActualRequest $request): RedirectResponse
+    public function bulkUpsert(BulkUpsertActualRequest $request, ActualEntryRecalculator $recalculator): RedirectResponse
     {
         $validated = $request->validated();
 
         /** @var array<int, array{category_id: int, amount: float, description?: string|null, notes?: string|null}> $entries */
         $entries = $validated['entries'];
 
+        // "amount" from the form is the manual part; the imported part comes from bank transactions.
         foreach ($entries as $entry) {
-            if ((float) $entry['amount'] === 0.0) {
-                ActualEntry::query()
-                    ->where('category_id', $entry['category_id'])
-                    ->where('year', $validated['year'])
-                    ->where('month', $validated['month'])
-                    ->delete();
-            } else {
-                ActualEntry::updateOrCreate(
-                    [
-                        'category_id' => $entry['category_id'],
-                        'year' => $validated['year'],
-                        'month' => $validated['month'],
-                    ],
-                    [
-                        'amount' => $entry['amount'],
-                        'description' => $entry['description'] ?? null,
-                        'notes' => $entry['notes'] ?? null,
-                    ],
-                );
+            $attributes = ['category_id' => $entry['category_id'], 'year' => $validated['year'], 'month' => $validated['month']];
+            $existing = ActualEntry::query()->where($attributes)->first();
+
+            if ($existing === null && (float) $entry['amount'] === 0.0) {
+                continue;
             }
+
+            $existing ??= new ActualEntry([...$attributes, 'imported_amount' => 0]);
+            $existing->fill([
+                'manual_amount' => $entry['amount'],
+                'description' => $entry['description'] ?? null,
+                'notes' => $entry['notes'] ?? null,
+            ])->save();
+
+            $recalculator->recalculate($entry['category_id'], $validated['year'], $validated['month']);
         }
 
         return redirect()->route('actual.index', ['year' => $validated['year'], 'month' => $validated['month']])

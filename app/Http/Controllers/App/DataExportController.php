@@ -4,9 +4,13 @@ namespace App\Http\Controllers\App;
 
 use App\Http\Controllers\Controller;
 use App\Models\ActualEntry;
+use App\Models\BankCategoryMapping;
+use App\Models\BankImport;
+use App\Models\BankTransaction;
 use App\Models\BudgetEntry;
 use App\Models\BudgetEntryItem;
 use App\Models\Category;
+use App\Models\MerchantRule;
 use App\Models\Reconciliation;
 use App\Models\Setting;
 use Illuminate\Database\Eloquent\Collection;
@@ -66,13 +70,15 @@ class DataExportController extends Controller
             ));
 
             $zip->addFromString('actual_entries.csv', $this->buildCsv(
-                ['id', 'category_id', 'year', 'month', 'amount', 'description', 'notes'],
+                ['id', 'category_id', 'year', 'month', 'amount', 'manual_amount', 'imported_amount', 'description', 'notes'],
                 $this->collectRows(ActualEntry::query()->orderBy('id')->get(), fn (ActualEntry $e): array => [
                     (string) $e->id,
                     (string) $e->category_id,
                     (string) $e->year,
                     (string) $e->month,
                     (string) $e->amount,
+                    (string) $e->manual_amount,
+                    (string) $e->imported_amount,
                     $e->description ?? '',
                     $e->notes ?? '',
                 ]),
@@ -88,6 +94,65 @@ class DataExportController extends Controller
                     (string) $r->calculated_balance,
                     (string) $r->adjustment,
                     $r->notes ?? '',
+                ]),
+            ));
+
+            $zip->addFromString('bank_imports.csv', $this->buildCsv(
+                ['id', 'bank', 'original_filename', 'period_start', 'period_end', 'rows_total', 'rows_card_expenses', 'rows_duplicates', 'status', 'completed_at'],
+                $this->collectRows(BankImport::query()->orderBy('id')->get(), fn (BankImport $i): array => [
+                    (string) $i->id,
+                    $i->bank->value,
+                    $i->original_filename,
+                    $i->period_start?->toDateString() ?? '',
+                    $i->period_end?->toDateString() ?? '',
+                    (string) $i->rows_total,
+                    (string) $i->rows_card_expenses,
+                    (string) $i->rows_duplicates,
+                    $i->status->value,
+                    $i->completed_at?->toDateTimeString() ?? '',
+                ]),
+            ));
+
+            $zip->addFromString('bank_transactions.csv', $this->buildCsv(
+                ['id', 'bank_import_id', 'fingerprint', 'operation_date', 'booking_date', 'amount', 'raw_description', 'merchant_key', 'merchant_label', 'payment_instrument', 'bank_category', 'category_id', 'categorization_source', 'confidence', 'status'],
+                $this->collectRows(BankTransaction::query()->orderBy('id')->get(), fn (BankTransaction $t): array => [
+                    (string) $t->id,
+                    (string) $t->bank_import_id,
+                    $t->fingerprint,
+                    $t->operation_date->toDateString(),
+                    $t->booking_date?->toDateString() ?? '',
+                    (string) $t->amount,
+                    $t->raw_description,
+                    $t->merchant_key,
+                    $t->merchant_label,
+                    $t->payment_instrument ?? '',
+                    $t->bank_category ?? '',
+                    (string) ($t->category_id ?? ''),
+                    $t->categorization_source->value ?? '',
+                    (string) ($t->confidence ?? ''),
+                    $t->status->value,
+                ]),
+            ));
+
+            $zip->addFromString('merchant_rules.csv', $this->buildCsv(
+                ['id', 'match_type', 'pattern', 'category_id', 'always_ask', 'times_confirmed'],
+                $this->collectRows(MerchantRule::query()->orderBy('id')->get(), fn (MerchantRule $r): array => [
+                    (string) $r->id,
+                    $r->match_type->value,
+                    $r->pattern,
+                    (string) $r->category_id,
+                    $r->always_ask ? '1' : '0',
+                    (string) $r->times_confirmed,
+                ]),
+            ));
+
+            $zip->addFromString('bank_category_mappings.csv', $this->buildCsv(
+                ['id', 'bank', 'bank_category', 'category_id'],
+                $this->collectRows(BankCategoryMapping::query()->orderBy('id')->get(), fn (BankCategoryMapping $m): array => [
+                    (string) $m->id,
+                    $m->bank->value,
+                    $m->bank_category,
+                    (string) ($m->category_id ?? ''),
                 ]),
             ));
 
@@ -139,6 +204,10 @@ class DataExportController extends Controller
         try {
             DB::transaction(function () use ($zip): void {
                 // Order matters: entries depend on categories
+                BankTransaction::query()->delete();
+                BankImport::query()->delete();
+                MerchantRule::query()->delete();
+                BankCategoryMapping::query()->delete();
                 Reconciliation::query()->delete();
                 ActualEntry::query()->delete();
                 BudgetEntry::query()->delete();
@@ -208,6 +277,9 @@ class DataExportController extends Controller
                             'year' => (int) $row['year'],
                             'month' => (int) $row['month'],
                             'amount' => $row['amount'],
+                            // Older backups have no split: everything was typed by hand.
+                            'manual_amount' => $row['manual_amount'] ?? $row['amount'],
+                            'imported_amount' => $row['imported_amount'] ?? '0',
                             'description' => ($row['description'] ?? '') !== '' ? $row['description'] : null,
                             'notes' => ($row['notes'] ?? '') !== '' ? $row['notes'] : null,
                             'created_at' => $now,
@@ -234,6 +306,54 @@ class DataExportController extends Controller
                     }
                 }
 
+                // Import bank import data (absent in older backups)
+                $this->insertRows($zip, 'bank_imports', fn (array $row): array => [
+                    'id' => (int) $row['id'],
+                    'bank' => $row['bank'],
+                    'original_filename' => $row['original_filename'],
+                    'period_start' => $this->nullable($row['period_start']),
+                    'period_end' => $this->nullable($row['period_end']),
+                    'rows_total' => (int) $row['rows_total'],
+                    'rows_card_expenses' => (int) $row['rows_card_expenses'],
+                    'rows_duplicates' => (int) $row['rows_duplicates'],
+                    'status' => $row['status'],
+                    'completed_at' => $this->nullable($row['completed_at']),
+                ]);
+
+                $this->insertRows($zip, 'bank_transactions', fn (array $row): array => [
+                    'id' => (int) $row['id'],
+                    'bank_import_id' => (int) $row['bank_import_id'],
+                    'fingerprint' => $row['fingerprint'],
+                    'operation_date' => $row['operation_date'],
+                    'booking_date' => $this->nullable($row['booking_date']),
+                    'amount' => $row['amount'],
+                    'raw_description' => $row['raw_description'],
+                    'merchant_key' => $row['merchant_key'],
+                    'merchant_label' => $row['merchant_label'],
+                    'payment_instrument' => $this->nullable($row['payment_instrument']),
+                    'bank_category' => $this->nullable($row['bank_category']),
+                    'category_id' => $this->nullable($row['category_id']),
+                    'categorization_source' => $this->nullable($row['categorization_source']),
+                    'confidence' => $this->nullable($row['confidence']),
+                    'status' => $row['status'],
+                ]);
+
+                $this->insertRows($zip, 'merchant_rules', fn (array $row): array => [
+                    'id' => (int) $row['id'],
+                    'match_type' => $row['match_type'],
+                    'pattern' => $row['pattern'],
+                    'category_id' => (int) $row['category_id'],
+                    'always_ask' => (bool) (int) $row['always_ask'],
+                    'times_confirmed' => (int) $row['times_confirmed'],
+                ]);
+
+                $this->insertRows($zip, 'bank_category_mappings', fn (array $row): array => [
+                    'id' => (int) $row['id'],
+                    'bank' => $row['bank'],
+                    'bank_category' => $row['bank_category'],
+                    'category_id' => $this->nullable($row['category_id']),
+                ]);
+
                 // Import settings
                 $settingsCsv = $zip->getFromName('settings.csv');
                 if ($settingsCsv !== false) {
@@ -248,6 +368,10 @@ class DataExportController extends Controller
                 $this->resetSequence('budget_entry_items');
                 $this->resetSequence('actual_entries');
                 $this->resetSequence('reconciliations');
+                $this->resetSequence('bank_imports');
+                $this->resetSequence('bank_transactions');
+                $this->resetSequence('merchant_rules');
+                $this->resetSequence('bank_category_mappings');
             });
         } catch (\Throwable $e) {
             $zip->close();
@@ -323,6 +447,29 @@ class DataExportController extends Controller
         }
 
         return $rows;
+    }
+
+    /**
+     * @param  callable(array<string, string>): array<string, mixed>  $mapper
+     */
+    private function insertRows(ZipArchive $zip, string $table, callable $mapper): void
+    {
+        $csv = $zip->getFromName("{$table}.csv");
+
+        if ($csv === false) {
+            return;
+        }
+
+        $now = now();
+
+        foreach ($this->parseCsv($csv) as $row) {
+            DB::table($table)->insert([...$mapper($row), 'created_at' => $now, 'updated_at' => $now]);
+        }
+    }
+
+    private function nullable(string $value): ?string
+    {
+        return $value !== '' ? $value : null;
     }
 
     private function resetSequence(string $table): void
