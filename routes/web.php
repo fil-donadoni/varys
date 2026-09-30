@@ -20,7 +20,6 @@ Route::post('budget/bulk', [BudgetEntryController::class, 'bulkUpsert'])->name('
 Route::put('budget/items', [BudgetEntryController::class, 'syncItems'])->name('budget.sync-items');
 
 Route::get('actual', [ActualEntryController::class, 'index'])->name('actual.index');
-Route::post('actual/bulk', [ActualEntryController::class, 'bulkUpsert'])->name('actual.bulk-upsert');
 
 Route::get('reconciliations', [ReconciliationController::class, 'index'])->name('reconciliations.index');
 Route::post('reconciliations/calculate', [ReconciliationController::class, 'calculateBalance'])->name('reconciliations.calculate');

@@ -3,6 +3,7 @@
 use App\Enums\CategoryType;
 use App\Enums\TransactionStatus;
 use App\Models\ActualEntry;
+use App\Models\ActualItem;
 use App\Models\BankTransaction;
 use App\Models\Category;
 use App\Services\BankImport\ActualEntryRecalculator;
@@ -24,9 +25,11 @@ function confirmedTransaction(Category $category, string $date, float $amount): 
     ]);
 }
 
-test('recalculation sums confirmed transactions of the month on top of the manual amount', function (): void {
+test('recalculation sums manual items and confirmed transactions of the month', function (): void {
     $category = Category::factory()->expense()->create();
-    ActualEntry::factory()->create(['category_id' => $category->id, 'year' => 2026, 'month' => 3, 'amount' => 100, 'manual_amount' => 100, 'imported_amount' => 0]);
+    ActualItem::factory()->create(['category_id' => $category->id, 'date' => '2026-03-02', 'amount' => 60]);
+    ActualItem::factory()->create(['category_id' => $category->id, 'date' => '2026-03-31', 'amount' => 40]);
+    ActualItem::factory()->create(['category_id' => $category->id, 'date' => '2026-04-01', 'amount' => 999]);
 
     confirmedTransaction($category, '2026-03-01', 20.5);
     confirmedTransaction($category, '2026-03-31', 10);
@@ -64,44 +67,6 @@ test('refunds reduce the imported amount', function (): void {
     app(ActualEntryRecalculator::class)->recalculate($category->id, 2026, 2);
 
     expect(ActualEntry::sole()->amount)->toEqual('60.00');
-});
-
-test('manual edits keep the imported part', function (): void {
-    $category = Category::factory()->expense()->create();
-    confirmedTransaction($category, '2026-03-05', 30);
-    app(ActualEntryRecalculator::class)->recalculate($category->id, 2026, 3);
-
-    $this->post('/actual/bulk', [
-        'year' => 2026,
-        'month' => 3,
-        'entries' => [['category_id' => $category->id, 'amount' => '70']],
-    ])->assertRedirect()->assertSessionHasNoErrors();
-
-    $entry = ActualEntry::sole();
-    expect($entry->manual_amount)->toEqual('70.00')
-        ->and($entry->imported_amount)->toEqual('30.00')
-        ->and($entry->amount)->toEqual('100.00');
-
-    $this->post('/actual/bulk', [
-        'year' => 2026,
-        'month' => 3,
-        'entries' => [['category_id' => $category->id, 'amount' => '0']],
-    ])->assertRedirect();
-
-    expect(ActualEntry::sole()->amount)->toEqual('30.00');
-});
-
-test('zero manual amount without imported data deletes the entry', function (): void {
-    $category = Category::factory()->expense()->create();
-    ActualEntry::factory()->create(['category_id' => $category->id, 'year' => 2026, 'month' => 3, 'amount' => 50]);
-
-    $this->post('/actual/bulk', [
-        'year' => 2026,
-        'month' => 3,
-        'entries' => [['category_id' => $category->id, 'amount' => '0']],
-    ])->assertRedirect();
-
-    expect(ActualEntry::count())->toBe(0);
 });
 
 test('income categories sum incoming transactions', function (): void {
