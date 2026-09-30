@@ -34,3 +34,11 @@ describe('varianceRatio / formatPercent', () => {
         expect(formatPercent(null)).toBe('—');
     });
 });
+
+describe('negative budgets (net balance)', () => {
+    it('treats a deeper deficit than planned as worse, not better', () => {
+        expect(varianceRatio(-1000, -500)).toBe(-1);
+        expect(varianceTone(-1000, -500, 'income')).toBe('bad');
+        expect(varianceTone(-300, -500, 'income')).toBe('good');
+    });
+});

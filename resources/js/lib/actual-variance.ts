@@ -7,9 +7,12 @@ const WARN_THRESHOLD = 0.3;
 // Keeps "exactly +10%" inside the band despite floating point (330 / 300 - 1 = 0.10000000000000009).
 const EPSILON = 1e-9;
 
-/** Relative difference of actual vs budget; null when there is no budget to compare with. */
+/**
+ * Relative difference of actual vs budget; null when there is no budget to compare with.
+ * Divides by the budget's size so a negative budget (net deficit) keeps the sign of the difference.
+ */
 export function varianceRatio(actual: number, budget: number): number | null {
-    return budget === 0 ? null : (actual - budget) / budget;
+    return budget === 0 ? null : (actual - budget) / Math.abs(budget);
 }
 
 /** How bad a category month looks: spending above budget (or earning below it) is worse. */
@@ -21,7 +24,7 @@ export function varianceTone(actual: number, budget: number, type: CategoryKind)
         return type === 'expense' && actual > 0 ? 'unbudgeted' : 'good';
     }
 
-    const ratio = (actual - budget) / budget;
+    const ratio = (actual - budget) / Math.abs(budget);
     const overrun = type === 'expense' ? ratio : -ratio;
 
     if (overrun < -OK_THRESHOLD - EPSILON) {

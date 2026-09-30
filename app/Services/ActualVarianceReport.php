@@ -131,7 +131,7 @@ class ActualVarianceReport
             'avg_budget' => $avgBudget,
             'avg_actual' => $avgActual,
             'variance' => $variance,
-            'variance_pct' => $variance !== null && $avgBudget !== 0.0 ? round($variance / $avgBudget, 4) : null,
+            'variance_pct' => $variance !== null && $avgBudget !== 0.0 ? round($variance / abs($avgBudget), 4) : null,
             'peak' => $peak,
         ];
     }

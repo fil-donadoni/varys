@@ -82,3 +82,13 @@ test('zero budget gives no percentage and totals combine categories', function (
         ->and($report['totals']['net']['avg_budget'])->toBe(2000.0)
         ->and($report['totals']['net']['peak'])->toBeNull();
 });
+
+test('a deeper net deficit than planned gives a negative percentage', function (): void {
+    $purchases = Category::factory()->expense()->create();
+    seedMonths($purchases, 2025, array_fill(1, 12, 500.0), array_fill(1, 12, 1000.0));
+
+    $net = app(ActualVarianceReport::class)->build(2025, CarbonImmutable::parse('2026-09-30'))['totals']['net'];
+
+    expect($net['variance'])->toBe(-500.0)
+        ->and($net['variance_pct'])->toBe(-1.0);
+});
