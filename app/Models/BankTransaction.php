@@ -12,6 +12,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 
 /**
+ * @property TransactionKind $kind
+ * @property Carbon $accounting_date
  * @property Carbon $operation_date
  * @property Carbon|null $booking_date
  * @property CategorizationSource|null $categorization_source
