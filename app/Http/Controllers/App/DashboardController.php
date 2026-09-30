@@ -9,12 +9,15 @@ use App\Models\BudgetEntry;
 use App\Models\Category;
 use App\Models\Reconciliation;
 use App\Models\Setting;
+use App\Services\InvoicedBudgetTotal;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class DashboardController extends Controller
 {
+    public function __construct(private readonly InvoicedBudgetTotal $invoicedBudgetTotal) {}
+
     public function __invoke(Request $request): Response
     {
         $year = (int) $request->query('year', (string) now()->year);
@@ -25,6 +28,7 @@ class DashboardController extends Controller
 
         $budgetEntries = BudgetEntry::query()
             ->where('year', $year)
+            ->with('items')
             ->get();
 
         $actualEntries = ActualEntry::query()
@@ -119,13 +123,7 @@ class DashboardController extends Controller
         }
 
         $invoiceLimit = (float) Setting::getValue('annual_invoice_limit', '0');
-        $invoicedCategoryIds = $categories
-            ->filter(fn (Category $c): bool => $c->type === CategoryType::Income && (bool) $c->is_invoiced) // @phpstan-ignore identical.alwaysFalse
-            ->pluck('id');
-
-        $totalInvoicedBudget = round((float) $budgetEntries
-            ->whereIn('category_id', $invoicedCategoryIds)
-            ->sum('amount'), 2);
+        $totalInvoicedBudget = $this->invoicedBudgetTotal->of($budgetEntries);
 
         if ($invoiceLimit > 0 && $totalInvoicedBudget > $invoiceLimit) {
             $alerts[] = [

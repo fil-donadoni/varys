@@ -1,5 +1,5 @@
 import { Head, router } from '@inertiajs/react';
-import { ChevronLeft, ChevronRight, ListPlus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ListPlus, Receipt } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { type BudgetItem, BudgetItemsDialog } from '@/components/shared/budget-items-dialog';
@@ -7,12 +7,15 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
+import { applyInvoicedFilter, computeInvoicedBudgetTotal, type InvoicedFilter } from '@/lib/budget-invoiced';
 import { cn, formatCurrency, parseAmount } from '@/lib/utils';
 
 interface Category {
     id: number;
     name: string;
     type: 'income' | 'expense';
+    /** Default invoiced flag for new entries and items of this category. */
+    is_invoiced: boolean;
     color: string | null;
     sort_order: number;
 }
@@ -21,11 +24,14 @@ interface EntryItemData {
     id: number;
     description: string;
     amount: string;
+    is_invoiced: boolean;
 }
 
 interface EntryData {
     id: number;
     amount: string;
+    /** Only meaningful when the entry has no items: split entries carry the flag per item. */
+    is_invoiced: boolean;
     notes: string | null;
     items: EntryItemData[];
 }
@@ -42,7 +48,6 @@ interface Props {
     year: number;
     categories: Category[];
     entries: Record<number, Record<number, EntryData>>;
-    invoicedCategoryIds: number[];
     invoiceLimit: number;
 }
 
@@ -64,6 +69,22 @@ const MONTH_NAMES = [
 
 type CellKey = `${number}-${number}`;
 type CellState = Record<CellKey, string>;
+
+const INVOICED_FILTER_OPTIONS: { value: InvoicedFilter; label: string }[] = [
+    { value: 'all', label: 'Tutti' },
+    { value: 'yes', label: 'Sì' },
+    { value: 'no', label: 'No' },
+];
+
+const INVOICED_FILTER_PARAM: Record<InvoicedFilter, string | null> = { all: null, yes: '1', no: '0' };
+
+function readInvoicedFilter(): InvoicedFilter {
+    if (typeof window === 'undefined') return 'all';
+    const value = new URLSearchParams(window.location.search).get('invoiced');
+    if (value === '1') return 'yes';
+    if (value === '0') return 'no';
+    return 'all';
+}
 
 function buildInitialCells(categories: Category[], entries: Record<number, Record<number, EntryData>>): CellState {
     const cells: CellState = {};
@@ -136,8 +157,22 @@ function TotalsRow({ label, categories, cells }: TotalsRowProps) {
     );
 }
 
-export default function BudgetIndex({ year, categories, entries, invoicedCategoryIds, invoiceLimit }: Props) {
+export default function BudgetIndex({ year, categories, entries, invoiceLimit }: Props) {
     const [cells, setCells] = useState<CellState>(() => buildInitialCells(categories, entries));
+    const [invoicedFilter, setInvoicedFilter] = useState<InvoicedFilter>(readInvoicedFilter);
+
+    const changeInvoicedFilter = (value: InvoicedFilter) => {
+        setInvoicedFilter(value);
+        const params = new URLSearchParams(window.location.search);
+        const param = INVOICED_FILTER_PARAM[value];
+        if (param === null) {
+            params.delete('invoiced');
+        } else {
+            params.set('invoiced', param);
+        }
+        const query = params.toString();
+        window.history.replaceState(window.history.state, '', query ? `?${query}` : window.location.pathname);
+    };
     const initialCellsRef = useRef<CellState>(buildInitialCells(categories, entries));
 
     // Reset the cells when the server sends new data (year change or reload after save).
@@ -196,6 +231,41 @@ export default function BudgetIndex({ year, categories, entries, invoicedCategor
         [cells, entries, year],
     );
 
+    const handleToggleInvoiced = useCallback(
+        (catId: number, month: number) => {
+            const existingEntry = entries[catId]?.[month];
+            if (!existingEntry) return;
+
+            const nextInvoiced = !existingEntry.is_invoiced;
+
+            router.post(
+                '/budget/bulk',
+                {
+                    year,
+                    entries: [
+                        {
+                            category_id: catId,
+                            month,
+                            amount: String(parseAmount(existingEntry.amount)),
+                            notes: existingEntry.notes,
+                            is_invoiced: nextInvoiced,
+                        },
+                    ],
+                },
+                {
+                    preserveScroll: true,
+                    onSuccess: () => {
+                        toast.success(nextInvoiced ? 'Segnata come fatturata' : 'Segnata come non fatturata');
+                    },
+                    onError: () => {
+                        toast.error('Errore durante il salvataggio');
+                    },
+                },
+            );
+        },
+        [entries, year],
+    );
+
     const [itemsDialogTarget, setItemsDialogTarget] = useState<ItemsDialogTarget | null>(null);
     const [itemsProcessing, setItemsProcessing] = useState(false);
 
@@ -216,7 +286,11 @@ export default function BudgetIndex({ year, categories, entries, invoicedCategor
                 year,
                 month: itemsDialogTarget.month,
                 category_id: itemsDialogTarget.category.id,
-                items: items.map((item) => ({ description: item.description, amount: String(item.amount) })),
+                items: items.map((item) => ({
+                    description: item.description,
+                    amount: String(item.amount),
+                    is_invoiced: item.is_invoiced,
+                })),
             },
             {
                 preserveScroll: true,
@@ -238,7 +312,12 @@ export default function BudgetIndex({ year, categories, entries, invoicedCategor
         : undefined;
 
     const navigateYear = (delta: number) => {
-        router.get('/budget', { year: year + delta }, { preserveScroll: false });
+        const param = INVOICED_FILTER_PARAM[invoicedFilter];
+        router.get(
+            '/budget',
+            { year: year + delta, ...(param === null ? {} : { invoiced: param }) },
+            { preserveScroll: false },
+        );
     };
 
     const incomeCategories = categories.filter((c) => c.type === 'income').sort((a, b) => a.sort_order - b.sort_order);
@@ -249,14 +328,16 @@ export default function BudgetIndex({ year, categories, entries, invoicedCategor
 
     const totalColumns = 13;
 
-    // Compute invoiced budget total from current cell values
-    const invoicedBudgetTotal = invoicedCategoryIds.reduce((total, catId) => {
-        for (let m = 1; m <= 12; m++) {
-            const key: CellKey = `${catId}-${m}`;
-            total += parseAmount(cells[key] ?? '');
+    const invoicedBudgetTotal = computeInvoicedBudgetTotal(categories, entries, cells);
+
+    const filteredView =
+        invoicedFilter === 'all' ? null : applyInvoicedFilter(categories, entries, cells, invoicedFilter);
+    const filteredCells: CellState = {};
+    if (filteredView) {
+        for (const [key, cell] of Object.entries(filteredView.cells)) {
+            filteredCells[key as CellKey] = cell ? String(cell.amount) : '';
         }
-        return total;
-    }, 0);
+    }
 
     const invoicePercentage = invoiceLimit > 0 ? (invoicedBudgetTotal / invoiceLimit) * 100 : 0;
     const isOverLimit = invoicedBudgetTotal > invoiceLimit && invoiceLimit > 0;
@@ -275,27 +356,53 @@ export default function BudgetIndex({ year, categories, entries, invoicedCategor
                         </p>
                     </div>
 
-                    {/* Year selector */}
-                    <div className="flex items-center gap-1 rounded-lg border bg-card px-1 py-1">
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="size-8"
-                            onClick={() => navigateYear(-1)}
-                            aria-label="Anno precedente"
+                    <div className="flex flex-wrap items-center gap-3">
+                        {/* Invoiced filter */}
+                        <div
+                            className="flex items-center gap-1 rounded-lg border bg-card px-1 py-1"
+                            role="group"
+                            aria-label="Filtro fatturati"
                         >
-                            <ChevronLeft className="size-4" />
-                        </Button>
-                        <span className="min-w-12 text-center text-sm font-semibold tabular-nums">{year}</span>
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="size-8"
-                            onClick={() => navigateYear(1)}
-                            aria-label="Anno successivo"
-                        >
-                            <ChevronRight className="size-4" />
-                        </Button>
+                            <span className="flex items-center gap-1 pr-1 pl-2 text-xs font-medium text-muted-foreground">
+                                <Receipt className="size-3.5" aria-hidden="true" />
+                                Fatturati
+                            </span>
+                            {INVOICED_FILTER_OPTIONS.map((option) => (
+                                <Button
+                                    key={option.value}
+                                    variant={invoicedFilter === option.value ? 'secondary' : 'ghost'}
+                                    size="sm"
+                                    className="h-8 px-3 text-xs"
+                                    aria-pressed={invoicedFilter === option.value}
+                                    onClick={() => changeInvoicedFilter(option.value)}
+                                >
+                                    {option.label}
+                                </Button>
+                            ))}
+                        </div>
+
+                        {/* Year selector */}
+                        <div className="flex items-center gap-1 rounded-lg border bg-card px-1 py-1">
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="size-8"
+                                onClick={() => navigateYear(-1)}
+                                aria-label="Anno precedente"
+                            >
+                                <ChevronLeft className="size-4" />
+                            </Button>
+                            <span className="min-w-12 text-center text-sm font-semibold tabular-nums">{year}</span>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="size-8"
+                                onClick={() => navigateYear(1)}
+                                aria-label="Anno successivo"
+                            >
+                                <ChevronRight className="size-4" />
+                            </Button>
+                        </div>
                     </div>
                 </div>
 
@@ -350,65 +457,100 @@ export default function BudgetIndex({ year, categories, entries, invoicedCategor
                             </TableRow>
                         </TableHeader>
 
-                        <TableBody>
-                            {/* Income group */}
-                            <TypeGroupHeaderRow label="Entrate" colSpan={totalColumns} />
-                            {incomeCategories.map((cat) => (
-                                <BudgetRow
-                                    key={cat.id}
-                                    category={cat}
-                                    cells={cells}
-                                    entries={entries[cat.id]}
-                                    onChange={handleCellChange}
-                                    onBlur={handleCellBlur}
-                                    onOpenItems={handleOpenItems}
+                        {filteredView ? (
+                            <TableBody>
+                                <TypeGroupHeaderRow
+                                    label={invoicedFilter === 'yes' ? 'Entrate fatturate' : 'Entrate non fatturate'}
+                                    colSpan={totalColumns}
                                 />
-                            ))}
-                            {incomeCategories.length === 0 && (
-                                <TableRow>
-                                    <TableCell
-                                        colSpan={totalColumns}
-                                        className="py-4 text-center text-sm text-muted-foreground"
-                                    >
-                                        Nessuna categoria di entrata
-                                    </TableCell>
-                                </TableRow>
-                            )}
-                            <TotalsRow label="Totale Entrate" categories={incomeCategories} cells={cells} />
-
-                            {/* Expense group */}
-                            <TypeGroupHeaderRow label="Uscite" colSpan={totalColumns} />
-                            {expenseCategories.map((cat) => (
-                                <BudgetRow
-                                    key={cat.id}
-                                    category={cat}
-                                    cells={cells}
-                                    entries={entries[cat.id]}
-                                    onChange={handleCellChange}
-                                    onBlur={handleCellBlur}
-                                    onOpenItems={handleOpenItems}
+                                {filteredView.categories.map((cat) => (
+                                    <FilteredBudgetRow
+                                        key={cat.id}
+                                        category={cat}
+                                        cells={filteredView.cells}
+                                        onOpenItems={handleOpenItems}
+                                    />
+                                ))}
+                                {filteredView.categories.length === 0 && (
+                                    <TableRow>
+                                        <TableCell
+                                            colSpan={totalColumns}
+                                            className="py-4 text-center text-sm text-muted-foreground"
+                                        >
+                                            Nessuna voce {invoicedFilter === 'yes' ? 'fatturata' : 'non fatturata'}
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                                <TotalsRow
+                                    label={invoicedFilter === 'yes' ? 'Totale fatturato' : 'Totale non fatturato'}
+                                    categories={filteredView.categories}
+                                    cells={filteredCells}
                                 />
-                            ))}
-                            {expenseCategories.length === 0 && (
-                                <TableRow>
-                                    <TableCell
-                                        colSpan={totalColumns}
-                                        className="py-4 text-center text-sm text-muted-foreground"
-                                    >
-                                        Nessuna categoria di uscita
-                                    </TableCell>
-                                </TableRow>
-                            )}
-                        </TableBody>
+                            </TableBody>
+                        ) : (
+                            <TableBody>
+                                {/* Income group */}
+                                <TypeGroupHeaderRow label="Entrate" colSpan={totalColumns} />
+                                {incomeCategories.map((cat) => (
+                                    <BudgetRow
+                                        key={cat.id}
+                                        category={cat}
+                                        cells={cells}
+                                        entries={entries[cat.id]}
+                                        onChange={handleCellChange}
+                                        onBlur={handleCellBlur}
+                                        onOpenItems={handleOpenItems}
+                                        onToggleInvoiced={handleToggleInvoiced}
+                                    />
+                                ))}
+                                {incomeCategories.length === 0 && (
+                                    <TableRow>
+                                        <TableCell
+                                            colSpan={totalColumns}
+                                            className="py-4 text-center text-sm text-muted-foreground"
+                                        >
+                                            Nessuna categoria di entrata
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                                <TotalsRow label="Totale Entrate" categories={incomeCategories} cells={cells} />
 
-                        <tfoot className="sticky bottom-0 z-20 border-t bg-card font-medium">
-                            <TotalsRow label="Totale Uscite" categories={expenseCategories} cells={cells} />
-                            <NetRow
-                                incomeCategories={incomeCategories}
-                                expenseCategories={expenseCategories}
-                                cells={cells}
-                            />
-                        </tfoot>
+                                {/* Expense group */}
+                                <TypeGroupHeaderRow label="Uscite" colSpan={totalColumns} />
+                                {expenseCategories.map((cat) => (
+                                    <BudgetRow
+                                        key={cat.id}
+                                        category={cat}
+                                        cells={cells}
+                                        entries={entries[cat.id]}
+                                        onChange={handleCellChange}
+                                        onBlur={handleCellBlur}
+                                        onOpenItems={handleOpenItems}
+                                    />
+                                ))}
+                                {expenseCategories.length === 0 && (
+                                    <TableRow>
+                                        <TableCell
+                                            colSpan={totalColumns}
+                                            className="py-4 text-center text-sm text-muted-foreground"
+                                        >
+                                            Nessuna categoria di uscita
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                            </TableBody>
+                        )}
+
+                        {!filteredView && (
+                            <tfoot className="sticky bottom-0 z-20 border-t bg-card font-medium">
+                                <TotalsRow label="Totale Uscite" categories={expenseCategories} cells={cells} />
+                                <NetRow
+                                    incomeCategories={incomeCategories}
+                                    expenseCategories={expenseCategories}
+                                    cells={cells}
+                                />
+                            </tfoot>
+                        )}
                     </Table>
                 </div>
             </div>
@@ -424,6 +566,15 @@ export default function BudgetIndex({ year, categories, entries, invoicedCategor
                     subtitle={`${MONTH_NAMES[itemsDialogTarget.month - 1]} ${year} — il budget del mese è la somma delle righe.`}
                     initialItems={dialogEntry?.items ?? []}
                     initialAmount={cells[`${itemsDialogTarget.category.id}-${itemsDialogTarget.month}`] ?? ''}
+                    invoiced={
+                        itemsDialogTarget.category.type === 'income'
+                            ? {
+                                  defaultValue: itemsDialogTarget.category.is_invoiced,
+                                  initialAmountValue:
+                                      dialogEntry?.is_invoiced ?? itemsDialogTarget.category.is_invoiced,
+                              }
+                            : undefined
+                    }
                     processing={itemsProcessing}
                     onSubmit={handleSaveItems}
                 />
@@ -434,6 +585,71 @@ export default function BudgetIndex({ year, categories, entries, invoicedCategor
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
+interface FilteredBudgetRowProps {
+    category: Category;
+    cells: Record<string, { amount: number; items: EntryItemData[] } | null>;
+    onOpenItems: (category: Category, month: number) => void;
+}
+
+/** Read-only row shown while the invoiced filter is active: only the matching side of each cell. */
+function FilteredBudgetRow({ category, cells, onOpenItems }: FilteredBudgetRowProps) {
+    return (
+        <TableRow className="group">
+            <TableCell className="sticky left-0 z-10 bg-card py-1.5 pl-3 group-hover:bg-muted/50">
+                <div className="flex items-center">
+                    <CategoryColorDot color={category.color} />
+                    <span className="text-xs font-medium">{category.name}</span>
+                </div>
+            </TableCell>
+            {MONTHS.map((_, idx) => {
+                const month = idx + 1;
+                const cell = cells[`${category.id}-${month}`] ?? null;
+                const label = `${category.name} - ${MONTHS[idx]}`;
+
+                if (!cell) {
+                    return (
+                        <TableCell key={month} className="p-1 text-right text-xs text-muted-foreground">
+                            <span className="block h-7 px-3 leading-7" aria-label={`${label}: nessuna voce`}>
+                                —
+                            </span>
+                        </TableCell>
+                    );
+                }
+
+                if (cell.items.length > 0) {
+                    const summary = cell.items
+                        .map((item) => `${item.description}: ${formatCurrency(parseAmount(item.amount))}`)
+                        .join('\n');
+                    return (
+                        <TableCell key={month} className="p-1">
+                            <button
+                                type="button"
+                                onClick={() => onOpenItems(category, month)}
+                                className="relative flex h-7 w-full items-center justify-end rounded-md border border-dashed border-primary/40 bg-primary/5 px-3 text-xs tabular-nums hover:bg-primary/10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                                title={summary}
+                                aria-label={`${label}: ${cell.items.length} righe, modifica dettaglio`}
+                            >
+                                <span className="absolute -top-1.5 -left-1.5 z-10 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-1 text-[9px] leading-none font-semibold text-primary-foreground ring-2 ring-card">
+                                    {cell.items.length}
+                                </span>
+                                {formatCurrency(cell.amount)}
+                            </button>
+                        </TableCell>
+                    );
+                }
+
+                return (
+                    <TableCell key={month} className="p-1 text-right text-xs tabular-nums">
+                        <span className="block h-7 px-3 leading-7" aria-label={label}>
+                            {formatCurrency(cell.amount)}
+                        </span>
+                    </TableCell>
+                );
+            })}
+        </TableRow>
+    );
+}
+
 interface BudgetRowProps {
     category: Category;
     cells: CellState;
@@ -441,9 +657,13 @@ interface BudgetRowProps {
     onChange: (catId: number, month: number, value: string) => void;
     onBlur: (catId: number, month: number) => void;
     onOpenItems: (category: Category, month: number) => void;
+    /** Only passed for income rows: expense entries are never invoiced. */
+    onToggleInvoiced?: (catId: number, month: number) => void;
 }
 
-function BudgetRow({ category, cells, entries, onChange, onBlur, onOpenItems }: BudgetRowProps) {
+function BudgetRow({ category, cells, entries, onChange, onBlur, onOpenItems, onToggleInvoiced }: BudgetRowProps) {
+    const canInvoice = category.type === 'income' && onToggleInvoiced !== undefined;
+
     return (
         <TableRow className="group">
             <TableCell className="sticky left-0 z-10 bg-card py-1.5 pl-3 group-hover:bg-muted/50">
@@ -455,12 +675,18 @@ function BudgetRow({ category, cells, entries, onChange, onBlur, onOpenItems }: 
             {MONTHS.map((_, idx) => {
                 const month = idx + 1;
                 const key: CellKey = `${category.id}-${month}`;
-                const items = entries?.[month]?.items ?? [];
+                const entry = entries?.[month];
+                const items = entry?.items ?? [];
                 const label = `${category.name} - ${MONTHS[idx]}`;
 
                 if (items.length > 0) {
+                    const invoicedCount = items.filter((item) => item.is_invoiced).length;
                     const summary = items
-                        .map((item) => `${item.description}: ${formatCurrency(parseAmount(item.amount))}`)
+                        .map(
+                            (item) =>
+                                `${item.description}: ${formatCurrency(parseAmount(item.amount))}${canInvoice && item.is_invoiced ? ' (fatturata)' : ''}`,
+                        )
+                        .concat(canInvoice ? [`${invoicedCount}/${items.length} fatturate`] : [])
                         .join('\n');
                     return (
                         <TableCell key={month} className="p-1">
@@ -501,6 +727,24 @@ function BudgetRow({ category, cells, entries, onChange, onBlur, onOpenItems }: 
                                 aria-label={label}
                                 title="Maiusc+Invio per scorporare in più righe"
                             />
+                            {canInvoice && entry && (
+                                <button
+                                    type="button"
+                                    tabIndex={-1}
+                                    onClick={() => onToggleInvoiced(category.id, month)}
+                                    aria-pressed={entry.is_invoiced}
+                                    className={cn(
+                                        'absolute -top-1.5 -left-1.5 z-10 flex size-4 items-center justify-center rounded-full ring-2 ring-card transition-opacity focus-visible:opacity-100',
+                                        entry.is_invoiced
+                                            ? 'bg-primary text-primary-foreground hover:bg-primary/80'
+                                            : 'bg-muted text-muted-foreground opacity-0 group-hover/cell:opacity-100 hover:text-foreground',
+                                    )}
+                                    aria-label={`${label}: ${entry.is_invoiced ? 'fatturata, segna come non fatturata' : 'non fatturata, segna come fatturata'}`}
+                                    title={entry.is_invoiced ? 'Fatturata' : 'Non fatturata'}
+                                >
+                                    <Receipt className="size-2.5" />
+                                </button>
+                            )}
                             <button
                                 type="button"
                                 tabIndex={-1}

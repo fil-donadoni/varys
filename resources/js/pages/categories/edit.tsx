@@ -124,6 +124,9 @@ export default function EditCategory({ category, types }: Props) {
                                     <Label htmlFor="is_invoiced" className="cursor-pointer">
                                         Fatturata
                                     </Label>
+                                    <span className="text-xs text-muted-foreground">
+                                        (default per le nuove voci di budget, modificabile voce per voce)
+                                    </span>
                                 </div>
                             )}
 

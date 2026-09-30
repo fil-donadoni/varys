@@ -55,8 +55,8 @@ describe('BudgetItemsDialog', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Salva' }));
 
         expect(onSubmit).toHaveBeenCalledWith([
-            { description: 'Affitto', amount: 1200.5 },
-            { description: 'Spese', amount: 1800 },
+            { description: 'Affitto', amount: 1200.5, is_invoiced: false },
+            { description: 'Spese', amount: 1800, is_invoiced: false },
         ]);
     });
 
@@ -78,5 +78,50 @@ describe('BudgetItemsDialog', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Salva' }));
 
         expect(onSubmit).toHaveBeenCalledWith([]);
+    });
+
+    it('hides the invoiced checkboxes when the category cannot be invoiced', () => {
+        renderDialog({ initialItems: [{ description: 'Affitto', amount: '100.00' }] });
+
+        expect(screen.queryByLabelText('Fatturata riga 1')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('budget-items-invoiced-total')).not.toBeInTheDocument();
+    });
+
+    it('shows each item invoiced flag and the invoiced subtotal', () => {
+        renderDialog({
+            invoiced: { defaultValue: true, initialAmountValue: false },
+            initialItems: [
+                { description: 'Cliente A', amount: '300.00', is_invoiced: true },
+                { description: 'Cliente B', amount: '200.00', is_invoiced: false },
+            ],
+        });
+
+        expect(screen.getByLabelText('Fatturata riga 1')).toBeChecked();
+        expect(screen.getByLabelText('Fatturata riga 2')).not.toBeChecked();
+        expect(screen.getByTestId('budget-items-invoiced-total')).toHaveTextContent('300,00');
+    });
+
+    it('defaults new rows to the category flag and the prefilled row to the entry flag', () => {
+        const { onSubmit } = renderDialog({
+            invoiced: { defaultValue: true, initialAmountValue: false },
+            initialAmount: '500',
+        });
+
+        expect(screen.getByLabelText('Fatturata riga 1')).not.toBeChecked();
+        expect(screen.getByLabelText('Fatturata riga 2')).toBeChecked();
+
+        fireEvent.change(screen.getByLabelText('Causale riga 1'), { target: { value: 'Acconto' } });
+        fireEvent.click(screen.getByLabelText('Fatturata riga 1'));
+        fireEvent.change(screen.getByLabelText('Causale riga 2'), { target: { value: 'Saldo' } });
+        fireEvent.change(screen.getByLabelText('Importo riga 2'), { target: { value: '250' } });
+
+        expect(screen.getByTestId('budget-items-invoiced-total')).toHaveTextContent('750,00');
+
+        fireEvent.click(screen.getByRole('button', { name: 'Salva' }));
+
+        expect(onSubmit).toHaveBeenCalledWith([
+            { description: 'Acconto', amount: 500, is_invoiced: true },
+            { description: 'Saldo', amount: 250, is_invoiced: true },
+        ]);
     });
 });

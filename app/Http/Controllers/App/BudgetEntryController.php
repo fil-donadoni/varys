@@ -35,16 +35,11 @@ class BudgetEntryController extends Controller
             ->all();
 
         $invoiceLimit = (float) Setting::getValue('annual_invoice_limit', '0');
-        $invoicedCategoryIds = $categories
-            ->filter(fn (Category $c): bool => $c->type === CategoryType::Income && (bool) $c->is_invoiced) // @phpstan-ignore identical.alwaysFalse
-            ->pluck('id')
-            ->all();
 
         return Inertia::render('budget/index', [
             'year' => $year,
             'categories' => $categories,
             'entries' => $entries,
-            'invoicedCategoryIds' => $invoicedCategoryIds,
             'invoiceLimit' => $invoiceLimit,
         ]);
     }
@@ -53,8 +48,10 @@ class BudgetEntryController extends Controller
     {
         $validated = $request->validated();
 
-        /** @var array<int, array{category_id: int, month: int, amount: float|null, notes?: string|null}> $entries */
+        /** @var array<int, array{category_id: int, month: int, amount: float|null, notes?: string|null, is_invoiced?: bool}> $entries */
         $entries = $validated['entries'];
+
+        $categories = Category::query()->findMany(array_column($entries, 'category_id'))->keyBy('id');
 
         foreach ($entries as $entry) {
             if ($entry['amount'] === null) {
@@ -67,17 +64,20 @@ class BudgetEntryController extends Controller
                 continue;
             }
 
-            $budgetEntry = BudgetEntry::updateOrCreate(
-                [
-                    'category_id' => $entry['category_id'],
-                    'year' => $validated['year'],
-                    'month' => $entry['month'],
-                ],
-                [
-                    'amount' => $entry['amount'],
-                    'notes' => $entry['notes'] ?? null,
-                ],
-            );
+            /** @var Category $category */
+            $category = $categories->get($entry['category_id']);
+
+            $attributes = [
+                'category_id' => $entry['category_id'],
+                'year' => $validated['year'],
+                'month' => $entry['month'],
+            ];
+
+            $budgetEntry = BudgetEntry::query()->firstOrNew($attributes);
+            $budgetEntry->amount = $entry['amount'];
+            $budgetEntry->notes = $entry['notes'] ?? null;
+            $budgetEntry->is_invoiced = $this->resolveInvoiced($category, $entry['is_invoiced'] ?? null, $budgetEntry->exists ? (bool) $budgetEntry->is_invoiced : null);
+            $budgetEntry->save();
 
             $budgetEntry->items()->delete();
         }
@@ -90,8 +90,11 @@ class BudgetEntryController extends Controller
     {
         $validated = $request->validated();
 
-        /** @var list<array{description: string, amount: float|string}> $items */
+        /** @var list<array{description: string, amount: float|string, is_invoiced?: bool}> $items */
         $items = $validated['items'];
+
+        /** @var Category $category */
+        $category = Category::query()->findOrFail($validated['category_id']);
 
         $attributes = [
             'category_id' => $validated['category_id'],
@@ -99,7 +102,7 @@ class BudgetEntryController extends Controller
             'month' => $validated['month'],
         ];
 
-        DB::transaction(function () use ($attributes, $items): void {
+        DB::transaction(function () use ($attributes, $items, $category): void {
             if ($items === []) {
                 BudgetEntry::query()->where($attributes)->delete();
 
@@ -117,11 +120,25 @@ class BudgetEntryController extends Controller
                     'description' => $item['description'],
                     'amount' => $item['amount'],
                     'sort_order' => $index,
+                    'is_invoiced' => $this->resolveInvoiced($category, $item['is_invoiced'] ?? null),
                 ]);
             }
         });
 
         return redirect()->route('budget.index', ['year' => $validated['year']])
             ->with('success', 'Budget aggiornato con successo.');
+    }
+
+    /**
+     * Expense lines are never invoiced; income lines take the explicit flag,
+     * else keep their current value, else the category default.
+     */
+    private function resolveInvoiced(Category $category, ?bool $explicit, ?bool $current = null): bool
+    {
+        if ($category->type !== CategoryType::Income) {
+            return false;
+        }
+
+        return $explicit ?? $current ?? (bool) $category->is_invoiced;
     }
 }

@@ -23,6 +23,7 @@ class BudgetEntry extends Model
     {
         return [
             'amount' => 'decimal:2',
+            'is_invoiced' => 'boolean',
         ];
     }
 

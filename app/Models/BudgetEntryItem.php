@@ -22,6 +22,7 @@ class BudgetEntryItem extends Model
         return [
             'amount' => 'decimal:2',
             'sort_order' => 'integer',
+            'is_invoiced' => 'boolean',
         ];
     }
 

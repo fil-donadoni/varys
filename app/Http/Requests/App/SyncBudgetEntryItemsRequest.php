@@ -18,6 +18,7 @@ class SyncBudgetEntryItemsRequest extends FormRequest
             'items' => ['present', 'array'],
             'items.*.description' => ['required', 'string', 'max:255'],
             'items.*.amount' => ['required', 'numeric', 'min:0'],
+            'items.*.is_invoiced' => ['sometimes', 'boolean'],
         ];
     }
 

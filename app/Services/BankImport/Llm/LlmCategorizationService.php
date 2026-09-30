@@ -38,7 +38,7 @@ class LlmCategorizationService
         ));
 
         $categories = array_values(Category::query()->orderBy('type')->orderBy('sort_order')->get()
-            ->map(fn (Category $c): CategoryOption => new CategoryOption($c->id, $c->name, $c->type)) // @phpstan-ignore argument.type
+            ->map(fn (Category $c): CategoryOption => new CategoryOption($c->id, $c->name, $c->type))
             ->all());
         $categoryTypes = Category::query()->pluck('type', 'id');
         $threshold = (float) config('bank_import.confidence_threshold');

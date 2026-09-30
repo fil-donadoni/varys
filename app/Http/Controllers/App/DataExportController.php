@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\App;
 
+use App\Enums\CategoryType;
 use App\Http\Controllers\Controller;
 use App\Models\ActualEntry;
 use App\Models\ActualItem;
@@ -41,7 +42,7 @@ class DataExportController extends Controller
                 $this->collectRows(Category::query()->orderBy('id')->get(), fn (Category $c): array => [
                     (string) $c->id,
                     $c->name,
-                    $c->type->value, // @phpstan-ignore property.nonObject
+                    $c->type->value,
                     $c->is_invoiced ? '1' : '0',
                     $c->color ?? '',
                     (string) $c->sort_order,
@@ -49,24 +50,26 @@ class DataExportController extends Controller
             ));
 
             $zip->addFromString('budget_entries.csv', $this->buildCsv(
-                ['id', 'category_id', 'year', 'month', 'amount', 'notes'],
+                ['id', 'category_id', 'year', 'month', 'amount', 'is_invoiced', 'notes'],
                 $this->collectRows(BudgetEntry::query()->orderBy('id')->get(), fn (BudgetEntry $e): array => [
                     (string) $e->id,
                     (string) $e->category_id,
                     (string) $e->year,
                     (string) $e->month,
                     (string) $e->amount,
+                    $e->is_invoiced ? '1' : '0',
                     $e->notes ?? '',
                 ]),
             ));
 
             $zip->addFromString('budget_entry_items.csv', $this->buildCsv(
-                ['id', 'budget_entry_id', 'description', 'amount', 'sort_order'],
+                ['id', 'budget_entry_id', 'description', 'amount', 'is_invoiced', 'sort_order'],
                 $this->collectRows(BudgetEntryItem::query()->orderBy('id')->get(), fn (BudgetEntryItem $i): array => [
                     (string) $i->id,
                     (string) $i->budget_entry_id,
                     $i->description,
                     (string) $i->amount,
+                    $i->is_invoiced ? '1' : '0',
                     (string) $i->sort_order,
                 ]),
             ));
@@ -251,16 +254,33 @@ class DataExportController extends Controller
                     }
                 }
 
+                // Backups made before per-entry flags only carry the category default.
+                /** @var array<int, bool> $invoicedByCategory */
+                $invoicedByCategory = DB::table('categories')
+                    ->where('type', CategoryType::Income->value)
+                    ->pluck('is_invoiced', 'id')
+                    ->map(fn ($value): bool => (bool) $value)
+                    ->all();
+
+                /** @var array<int, bool> $invoicedByEntry */
+                $invoicedByEntry = [];
+
                 // Import budget entries
                 $budgetCsv = $zip->getFromName('budget_entries.csv');
                 if ($budgetCsv !== false) {
                     foreach ($this->parseCsv($budgetCsv) as $row) {
+                        $isInvoiced = isset($row['is_invoiced'])
+                            ? (bool) (int) $row['is_invoiced']
+                            : ($invoicedByCategory[(int) $row['category_id']] ?? false);
+                        $invoicedByEntry[(int) $row['id']] = $isInvoiced;
+
                         DB::table('budget_entries')->insert([
                             'id' => (int) $row['id'],
                             'category_id' => (int) $row['category_id'],
                             'year' => (int) $row['year'],
                             'month' => (int) $row['month'],
                             'amount' => $row['amount'],
+                            'is_invoiced' => $isInvoiced,
                             'notes' => $row['notes'] !== '' ? $row['notes'] : null,
                             'created_at' => $now,
                             'updated_at' => $now,
@@ -277,6 +297,9 @@ class DataExportController extends Controller
                             'budget_entry_id' => (int) $row['budget_entry_id'],
                             'description' => $row['description'],
                             'amount' => $row['amount'],
+                            'is_invoiced' => isset($row['is_invoiced'])
+                                ? (bool) (int) $row['is_invoiced']
+                                : ($invoicedByEntry[(int) $row['budget_entry_id']] ?? false),
                             'sort_order' => (int) $row['sort_order'],
                             'created_at' => $now,
                             'updated_at' => $now,
