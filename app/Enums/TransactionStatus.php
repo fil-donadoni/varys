@@ -5,7 +5,7 @@ namespace App\Enums;
 enum TransactionStatus: string
 {
     case ToReview = 'to_review';
-    case Auto = 'auto';
+    case Auto = 'auto'; // has a category, waiting for the import to be confirmed
     case Confirmed = 'confirmed';
     case Excluded = 'excluded';
 
@@ -13,7 +13,7 @@ enum TransactionStatus: string
     {
         return match ($this) {
             self::ToReview => 'Da confermare',
-            self::Auto => 'Automatica',
+            self::Auto => 'Pronta',
             self::Confirmed => 'Confermata',
             self::Excluded => 'Esclusa',
         };
