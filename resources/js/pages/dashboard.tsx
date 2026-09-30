@@ -90,6 +90,7 @@ function currencyFormatter(value: number) {
     return new Intl.NumberFormat('it-IT', {
         style: 'currency',
         currency: 'EUR',
+        useGrouping: 'always',
         maximumFractionDigits: 0,
     }).format(value);
 }

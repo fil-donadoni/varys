@@ -31,7 +31,7 @@ describe('BudgetItemsDialog', () => {
 
         expect(screen.getByLabelText('Causale riga 1')).toHaveValue('Cliente A');
         expect(screen.getByLabelText('Importo riga 2')).toHaveValue('1800.00');
-        expect(screen.getByTestId('budget-items-total')).toHaveTextContent('3000,00');
+        expect(screen.getByTestId('budget-items-total')).toHaveTextContent('3.000,00');
     });
 
     it('prefills the first row with the existing single amount', () => {
@@ -50,7 +50,7 @@ describe('BudgetItemsDialog', () => {
         fireEvent.change(screen.getByLabelText('Causale riga 3'), { target: { value: 'Spese' } });
         fireEvent.change(screen.getByLabelText('Importo riga 3'), { target: { value: '1800' } });
 
-        expect(screen.getByTestId('budget-items-total')).toHaveTextContent('3000,50');
+        expect(screen.getByTestId('budget-items-total')).toHaveTextContent('3.000,50');
 
         fireEvent.click(screen.getByRole('button', { name: 'Salva' }));
 
