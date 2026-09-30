@@ -49,17 +49,6 @@ test('uploading a statement stores every movement for review', function (): void
         ->and($amazon->operation_date->toDateString())->toBe('2025-12-30');
 });
 
-test('uploading the same statement twice skips duplicates', function (): void {
-    uploadStatement(BankStatementFixtures::ing());
-    uploadStatement(BankStatementFixtures::ing());
-
-    $second = BankImport::query()->latest('id')->first();
-
-    expect($second->rows_imported)->toBe(0)
-        ->and($second->rows_duplicates)->toBe(8)
-        ->and(BankTransaction::count())->toBe(8);
-});
-
 test('unsupported files return a validation error', function (): void {
     uploadStatement(BankStatementFixtures::ing(), 'intesa')
         ->assertSessionHasErrors(['file' => 'Il file non sembra un export di Intesa Sanpaolo.']);
@@ -200,8 +189,7 @@ test('import pages render', function (): void {
         ->assertInertia(fn ($page) => $page
             ->component('bank-imports/index')
             ->has('imports', 1)
-            ->where('imports.0.bank', 'Intesa Sanpaolo')
-            ->has('banks', 2));
+            ->where('imports.0.bank', 'Intesa Sanpaolo'));
 
     $this->get("/bank-imports/{$import->id}")
         ->assertInertia(fn ($page) => $page
@@ -209,4 +197,72 @@ test('import pages render', function (): void {
             ->where('bankImport.rows_imported', 10)
             ->has('transactions', 10)
             ->where('transactions.0.merchant_key', 'ZALANDO PAYMENTS'));
+});
+
+test('identifiers are masked before movements are stored', function (): void {
+    $path = BankStatementFixtures::xlsx([
+        ['Data', 'Operazione', 'Dettagli', 'Conto o carta', 'Contabilizzazione', 'Categoria', 'Valuta', 'Importo'],
+        ['date:2026-03-24', 'Bar Roma', 'Pagamento Su POS BAR ROMA Carta N.5167 XXXX XXXX XX60 COD. 5465441/00001', 'Conto 1000/00012345', 'CONTABILIZZATO', 'Ristoranti e bar', 'EUR', -13],
+        ['date:2026-03-25', 'Bonifico Disposto Da ACME SRL', 'Bonifico da IBAN IT60X0542811101000000123456 rif RSSMRA80A01H501U', 'Conto 1000/00012345', 'CONTABILIZZATO', 'Bonifici ricevuti', 'EUR', 100],
+        ['date:2026-03-26', 'Paypal *shop', 'Paypal *shop', 'SUPERFLASH ****534207000006', 'CONTABILIZZATO', 'Altre uscite', 'EUR', -5],
+    ]);
+
+    uploadStatement($path);
+
+    $descriptions = BankTransaction::query()->pluck('raw_description')->implode(' ');
+
+    expect($descriptions)
+        ->not->toContain('5167', 'IT60X', 'RSSMRA80', '534207')
+        ->toContain('[CARTA]', '[IBAN]', '[CF]')
+        ->and(BankTransaction::query()->where('merchant_key', 'PAYPAL *SHOP')->sole()->payment_instrument)->toBe('SUPERFLASH')
+        ->and(BankImport::sole()->anonymization_stats)->toMatchArray(['cards' => 1, 'ibans' => 1, 'fiscal_codes' => 1]);
+});
+
+test('uploading an already imported file creates no import and points to the existing one', function (): void {
+    uploadStatement(BankStatementFixtures::ing());
+    $first = BankImport::sole();
+
+    uploadStatement(BankStatementFixtures::ing())
+        ->assertRedirect("/bank-imports/{$first->id}")
+        ->assertSessionHas('notice');
+
+    expect(BankImport::count())->toBe(1)
+        ->and(BankTransaction::count())->toBe(8);
+});
+
+test('a completed import is never duplicated by a new upload', function (): void {
+    $expense = Category::factory()->expense()->create();
+    $income = Category::factory()->income()->create();
+    uploadStatement(BankStatementFixtures::ing());
+    $import = BankImport::sole();
+
+    foreach (BankTransaction::all() as $transaction) {
+        $this->patch("/bank-transactions/{$transaction->id}", [
+            'category_id' => (float) $transaction->amount > 0 ? $income->id : $expense->id,
+            'exclude' => false,
+            'apply_to_merchant' => false,
+        ]);
+    }
+    $this->post("/bank-imports/{$import->id}/complete");
+    $totals = ActualEntry::query()->orderBy('id')->pluck('amount')->all();
+
+    uploadStatement(BankStatementFixtures::ing())->assertRedirect("/bank-imports/{$import->id}");
+
+    expect(BankImport::count())->toBe(1)
+        ->and(ActualEntry::query()->orderBy('id')->pluck('amount')->all())->toBe($totals);
+});
+
+test('an overlapping file only imports the new movements', function (): void {
+    $header = ['DATA CONTABILE', 'DATA VALUTA', 'CAUSALE', 'DESCRIZIONE OPERAZIONE', 'IMPORTO IN EURO'];
+    $coffee = fn (string $day): array => ["date:2026-01-{$day}", "date:2026-01-{$day}", 'Pagamento Carta', 'Operazione Mastercard del '.$day.'/01/2026 alle ore 10:00 presso BAR ROMA', -1.5];
+
+    // Two identical coffees on the same day are two movements, not a duplicate.
+    uploadStatement(BankStatementFixtures::xlsx([$header, $coffee('10'), $coffee('10')]));
+    uploadStatement(BankStatementFixtures::xlsx([$header, $coffee('10'), $coffee('10'), $coffee('11')]));
+
+    $second = BankImport::query()->latest('id')->first();
+
+    expect(BankTransaction::count())->toBe(3)
+        ->and($second->rows_imported)->toBe(1)
+        ->and($second->rows_duplicates)->toBe(2);
 });

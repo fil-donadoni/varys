@@ -1,13 +1,9 @@
-import { Head, Link, router, useForm } from '@inertiajs/react';
-import { Trash2, Upload } from 'lucide-react';
-import { useRef } from 'react';
+import { Head, Link, router } from '@inertiajs/react';
+import { Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { BankImportDialog } from '@/components/shared/bank-import-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
 
@@ -26,25 +22,13 @@ interface BankImportRow {
 
 interface Props {
     imports: BankImportRow[];
-    banks: { value: string; label: string }[];
 }
-
-const AUTO_DETECT = 'auto';
 
 function formatDate(date: string | null): string {
     return date ? new Date(date).toLocaleDateString('it-IT') : '—';
 }
 
-export default function BankImportsIndex({ imports, banks }: Props) {
-    const fileInputRef = useRef<HTMLInputElement>(null);
-    const form = useForm<{ file: File | null; bank: string }>({ file: null, bank: AUTO_DETECT });
-
-    function submit(e: React.FormEvent) {
-        e.preventDefault();
-        form.transform((data) => ({ ...data, bank: data.bank === AUTO_DETECT ? null : data.bank }));
-        form.post('/bank-imports', { forceFormData: true });
-    }
-
+export default function BankImportsIndex({ imports }: Props) {
     function destroy(row: BankImportRow) {
         const message =
             row.status === 'completed'
@@ -63,56 +47,16 @@ export default function BankImportsIndex({ imports, banks }: Props) {
             <Head title="Import movimenti" />
 
             <div className="space-y-6">
-                <div>
-                    <h1 className="text-2xl font-bold tracking-tight">Import movimenti</h1>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                        Carica l'export Excel dei movimenti di Intesa Sanpaolo o ING: i consuntivi si compilano dopo la
-                        tua conferma. Il file non viene salvato.
-                    </p>
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                        <h1 className="text-2xl font-bold tracking-tight">Storico import</h1>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                            Gli export dei movimenti caricati. Eliminare un import confermato toglie i suoi importi dai
+                            consuntivi.
+                        </p>
+                    </div>
+                    <BankImportDialog />
                 </div>
-
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="text-base">Nuovo import</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <form onSubmit={submit} className="flex flex-wrap items-end gap-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="file">File Excel</Label>
-                                <Input
-                                    ref={fileInputRef}
-                                    id="file"
-                                    type="file"
-                                    accept=".xlsx,.xls"
-                                    onChange={(e) => form.setData('file', e.target.files?.[0] ?? null)}
-                                    aria-invalid={!!form.errors.file}
-                                    className="w-80"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="bank">Banca</Label>
-                                <Select value={form.data.bank} onValueChange={(value) => form.setData('bank', value)}>
-                                    <SelectTrigger id="bank" className="w-56">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value={AUTO_DETECT}>Riconosci automaticamente</SelectItem>
-                                        {banks.map((bank) => (
-                                            <SelectItem key={bank.value} value={bank.value}>
-                                                {bank.label}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <Button type="submit" disabled={!form.data.file || form.processing}>
-                                <Upload className="size-4" />
-                                {form.processing ? 'Lettura in corso…' : 'Importa'}
-                            </Button>
-                        </form>
-                        {form.errors.file && <p className="mt-2 text-sm text-destructive">{form.errors.file}</p>}
-                    </CardContent>
-                </Card>
 
                 <div className="rounded-lg border bg-card shadow-xs">
                     <Table className="text-xs">

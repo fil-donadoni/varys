@@ -1,8 +1,9 @@
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Check, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Fragment, useState } from 'react';
 import { toast } from 'sonner';
 import { CategorySelect } from '@/components/shared/category-select';
+import { ImportPipeline, type Pipeline } from '@/components/shared/import-pipeline';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -27,6 +28,7 @@ interface Props {
     bankImport: BankImportSummary;
     transactions: ImportTransaction[];
     categories: ImportCategory[];
+    pipeline: Pipeline;
 }
 
 function formatDate(date: string | null): string {
@@ -45,11 +47,20 @@ function assign(transaction: ImportTransaction, categoryId: number | null, exclu
     );
 }
 
-export default function BankImportShow({ bankImport, transactions, categories }: Props) {
+export default function BankImportShow({ bankImport, transactions, categories, pipeline }: Props) {
     const { errors } = usePage<{ errors: Record<string, string> }>().props;
     const readOnly = bankImport.status === 'completed';
 
     const toReview = transactions.filter((t) => t.status === 'to_review');
+
+    // The review queue is frozen until the page reloads or the AI runs: rows that get a category stay in place
+    // (marked as done) instead of disappearing, so the list never shifts under the cursor.
+    const queueKey = pipeline.llm.ran_at ?? 'initial';
+    const [queue, setQueue] = useState(() => ({ key: queueKey, ids: new Set(toReview.map((t) => t.id)) }));
+    if (queue.key !== queueKey) {
+        setQueue({ key: queueKey, ids: new Set(toReview.map((t) => t.id)) });
+    }
+    const reviewList = transactions.filter((t) => queue.ids.has(t.id));
     const ready = transactions.filter((t) => t.status === 'auto' || t.status === 'confirmed');
     const excluded = transactions.filter((t) => t.status === 'excluded');
 
@@ -72,7 +83,7 @@ export default function BankImportShow({ bankImport, transactions, categories }:
                             href="/bank-imports"
                             className="mb-1 inline-flex items-center text-xs text-muted-foreground hover:text-foreground"
                         >
-                            <ChevronLeft className="size-3" /> Import movimenti
+                            <ChevronLeft className="size-3" /> Storico import
                         </Link>
                         <h1 className="text-2xl font-bold tracking-tight">
                             {bankImport.bank} · {formatDate(bankImport.period_start)} –{' '}
@@ -98,6 +109,19 @@ export default function BankImportShow({ bankImport, transactions, categories }:
                     )}
                 </div>
 
+                <div className="rounded-lg border bg-card p-4 shadow-xs">
+                    <ImportPipeline
+                        importId={bankImport.id}
+                        filename={bankImport.original_filename}
+                        rowsTotal={bankImport.rows_total}
+                        rowsDuplicates={bankImport.rows_duplicates}
+                        toReviewCount={toReview.length}
+                        readOnly={readOnly}
+                        pipeline={pipeline}
+                        llmError={errors.llm}
+                    />
+                </div>
+
                 {errors.import && <p className="text-sm text-destructive">{errors.import}</p>}
 
                 <Tabs defaultValue={toReview.length > 0 ? 'to_review' : 'ready'}>
@@ -110,7 +134,7 @@ export default function BankImportShow({ bankImport, transactions, categories }:
                     </TabsList>
 
                     <TabsContent value="to_review">
-                        <MerchantTable transactions={toReview} categories={categories} readOnly={readOnly} />
+                        <MerchantTable transactions={reviewList} categories={categories} readOnly={readOnly} />
                     </TabsContent>
                     <TabsContent value="ready">
                         <MerchantTable transactions={ready} categories={categories} readOnly={readOnly} />
@@ -181,10 +205,11 @@ function MerchantRows({
     const first = group.transactions[0];
     const allExcluded = group.transactions.every((t) => t.status === 'excluded');
     const sources = [...new Set(group.transactions.map((t) => t.source_label).filter(Boolean))];
+    const resolved = group.transactions.every((t) => t.status !== 'to_review');
 
     return (
         <Fragment>
-            <TableRow className={cn(open && 'bg-muted/30')}>
+            <TableRow className={cn(open && 'bg-muted/30', resolved && 'opacity-50')}>
                 <TableCell className="p-1">
                     <Button
                         variant="ghost"
@@ -197,7 +222,10 @@ function MerchantRows({
                     </Button>
                 </TableCell>
                 <TableCell>
-                    <div className="font-medium">{group.merchantKey}</div>
+                    <div className="flex items-center gap-1 font-medium">
+                        {resolved && <Check className="size-3.5 text-emerald-600" aria-label="Fatto" />}
+                        {group.merchantKey}
+                    </div>
                     {group.label.toUpperCase() !== group.merchantKey && (
                         <div className="text-[10px] text-muted-foreground">{group.label}</div>
                     )}

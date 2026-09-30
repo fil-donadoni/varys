@@ -245,3 +245,17 @@ Le route seguono le convenzioni esistenti: controller in `app/Http/Controllers/A
 - Colonne aggiunte a `bank_transactions`: `kind`, `accounting_date`. `amount` ha il segno della banca.
 - `bank_imports.rows_card_expenses` → `rows_imported`.
 - `merchant_rules.category_id` è nullable, e c'è la nuova colonna `exclude` (bool).
+
+## Aggiornamento: flusso integrato e idempotenza (2026-09-30)
+
+- **Upload** dalla pagina Consuntivo (pulsante "Importa movimenti"). Lo storico degli import è su `/bank-imports`, raggiungibile dalla finestra di upload e dalla revisione, non più dal menu.
+- **Pipeline visibile nella revisione:** file letto → dati sensibili rimossi → movimenti scorporati → categorizzazione locale → categorizzazione AI → revisione e conferma.
+- **Anonimizzazione in due livelli:**
+    1. All'ingresso, `StatementAnonymizer::maskIdentifiers` su causale ed esercente: carte, IBAN, codici fiscali, conti, email. I conteggi vanno in `bank_imports.anonymization_stats`.
+    2. Prima dell'invio all'LLM, `scrubText` (con i nomi di Impostazioni → "Nomi da non inviare mai all'AI"). Una voce che contiene ancora dati mascherati (`PERSONA_n`, `[NOME]`…) non viene inviata.
+- **Invio all'AI:** anteprima con checkbox, invio con un click (`POST /bank-imports/{id}/categorize`), a blocchi da 50 con id casuali e ordine mescolato. Le statistiche vanno in `bank_imports.llm_stats`. Gli esercenti già inviati non vengono reinviati.
+- **Idempotenza:**
+    - un movimento ha un'impronta univoca (vincolo DB), e l'inserimento usa `createOrFirst`
+    - un file senza movimenti nuovi non crea un import: si torna all'import esistente con l'avviso "File già importato"
+    - un file che si sovrappone in parte importa solo i movimenti nuovi
+- **Revisione:** la lista "Da confermare" resta ferma finché non ricarichi la pagina. I gruppi già gestiti restano al loro posto, attenuati e con la spunta.

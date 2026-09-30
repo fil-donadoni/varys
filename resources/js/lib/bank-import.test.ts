@@ -37,6 +37,17 @@ describe('groupByMerchant', () => {
         expect(groups[0].mixed).toBe(false);
     });
 
+    it('puts frequent merchants first, then larger amounts', () => {
+        const groups = groupByMerchant([
+            transaction({ id: 1, merchant_key: 'SMALL', amount: -5 }),
+            transaction({ id: 2, merchant_key: 'BIG', amount: -500 }),
+            transaction({ id: 3, merchant_key: 'OFTEN', amount: -1 }),
+            transaction({ id: 4, merchant_key: 'OFTEN', amount: -1 }),
+        ]);
+
+        expect(groups.map((g) => g.merchantKey)).toEqual(['OFTEN', 'BIG', 'SMALL']);
+    });
+
     it('flags mixed categories', () => {
         const [group] = groupByMerchant([
             transaction({ id: 1, category_id: 3 }),

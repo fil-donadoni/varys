@@ -11,6 +11,7 @@ interface Props {
     settings: {
         opening_balance: string;
         annual_invoice_limit: string;
+        anonymize_masks: string;
     };
 }
 
@@ -18,6 +19,7 @@ export default function SettingsIndex({ settings }: Props) {
     const { data, setData, put, processing, errors } = useForm({
         opening_balance: settings.opening_balance,
         annual_invoice_limit: settings.annual_invoice_limit,
+        anonymize_masks: settings.anonymize_masks,
     });
 
     const importForm = useForm<{ file: File | null }>({ file: null });
@@ -104,6 +106,26 @@ export default function SettingsIndex({ settings }: Props) {
                                     <p id="limite-error" className="text-sm text-destructive">
                                         {errors.annual_invoice_limit}
                                     </p>
+                                )}
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <Label htmlFor="anonymize_masks">Nomi da non inviare mai all'AI</Label>
+                                <textarea
+                                    id="anonymize_masks"
+                                    rows={3}
+                                    value={data.anonymize_masks}
+                                    onChange={(e) => setData('anonymize_masks', e.target.value)}
+                                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                                    placeholder={'Rossi\nMario Rossi'}
+                                    aria-invalid={!!errors.anonymize_masks}
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Uno per riga: i tuoi cognomi e quelli di familiari. Gli esercenti che li contengono
+                                    non vengono mai inviati all'AI durante l'import dei movimenti.
+                                </p>
+                                {errors.anonymize_masks && (
+                                    <p className="text-sm text-destructive">{errors.anonymize_masks}</p>
                                 )}
                             </div>
                         </CardContent>

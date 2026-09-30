@@ -16,6 +16,9 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $period_start
  * @property Carbon|null $period_end
  * @property Carbon|null $completed_at
+ * @property array<string, int>|null $anonymization_stats
+ * @property array<string, int|string>|null $llm_stats
+ * @property Carbon|null $llm_ran_at
  */
 class BankImport extends Model
 {
@@ -38,6 +41,9 @@ class BankImport extends Model
             'rows_imported' => 'integer',
             'rows_duplicates' => 'integer',
             'completed_at' => 'datetime',
+            'anonymization_stats' => 'array',
+            'llm_stats' => 'array',
+            'llm_ran_at' => 'datetime',
         ];
     }
 

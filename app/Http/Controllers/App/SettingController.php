@@ -17,6 +17,7 @@ class SettingController extends Controller
             'settings' => [
                 'opening_balance' => Setting::getValue('opening_balance', '0'),
                 'annual_invoice_limit' => Setting::getValue('annual_invoice_limit', '0'),
+                'anonymize_masks' => Setting::getValue('anonymize_masks', ''),
             ],
         ]);
     }
@@ -26,6 +27,7 @@ class SettingController extends Controller
         $validated = $request->validate([
             'opening_balance' => ['required', 'numeric', 'min:0'],
             'annual_invoice_limit' => ['required', 'numeric', 'min:0'],
+            'anonymize_masks' => ['nullable', 'string', 'max:2000'],
         ]);
 
         foreach ($validated as $key => $value) {

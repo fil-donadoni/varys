@@ -31,6 +31,7 @@ Route::get('settings', [SettingController::class, 'index'])->name('settings.inde
 Route::put('settings', [SettingController::class, 'update'])->name('settings.update');
 
 Route::resource('bank-imports', BankImportController::class)->only(['index', 'store', 'show', 'destroy']);
+Route::post('bank-imports/{bank_import}/categorize', [BankImportController::class, 'categorize'])->name('bank-imports.categorize');
 Route::post('bank-imports/{bank_import}/complete', [BankImportController::class, 'complete'])->name('bank-imports.complete');
 Route::patch('bank-transactions/{bank_transaction}', [BankTransactionController::class, 'update'])->name('bank-transactions.update');
 

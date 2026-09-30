@@ -37,7 +37,7 @@ export interface MerchantGroup {
 
 export const EXCLUDE_VALUE = 'exclude';
 
-/** Groups transactions by merchant, keeping the order of the first occurrence. */
+/** Groups transactions by merchant: most frequent first, then largest amounts, so few choices cover most movements. */
 export function groupByMerchant(transactions: ImportTransaction[]): MerchantGroup[] {
     const groups = new Map<string, MerchantGroup>();
 
@@ -62,7 +62,9 @@ export function groupByMerchant(transactions: ImportTransaction[]): MerchantGrou
         group.categoryId = ids.size === 1 ? group.transactions[0].category_id : null;
     }
 
-    return [...groups.values()];
+    return [...groups.values()].sort(
+        (a, b) => b.transactions.length - a.transactions.length || Math.abs(b.total) - Math.abs(a.total),
+    );
 }
 
 /** Income categories only fit money coming in; expense categories fit expenses and refunds. */

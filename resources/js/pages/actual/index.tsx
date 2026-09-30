@@ -2,6 +2,7 @@ import { Head, router } from '@inertiajs/react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { BankImportDialog } from '@/components/shared/bank-import-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -278,6 +279,8 @@ export default function ActualIndex({ year, month, categories, entries, budgetEn
                     </div>
 
                     <div className="flex items-center gap-3">
+                        <BankImportDialog />
+
                         {/* Year selector */}
                         <div className="flex items-center gap-1 rounded-lg border bg-card px-1 py-1">
                             <Button

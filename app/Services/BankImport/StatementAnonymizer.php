@@ -123,15 +123,30 @@ final class StatementAnonymizer
     {
         $value = $this->applyCustomMasks($value);
 
+        return $this->maskPeopleAfterKeywords($this->maskIdentifiers($value));
+    }
+
+    /**
+     * Masks identifiers that are never needed, not even locally: emails, IBANs, fiscal codes, card and account numbers.
+     */
+    public function maskIdentifiers(string $value): string
+    {
         $value = $this->replaceCounting('/[\w.+-]+@[\w-]+\.[\w.-]+/u', '[EMAIL]', $value, 'emails');
         $value = $this->replaceCounting('/\b[A-Z]{2}\d{2}(?:[A-Z0-9]{11,30}|(?: [A-Z0-9]{4}){2,7}(?: [A-Z0-9]{1,3})?)\b/', '[IBAN]', $value, 'ibans');
         // Fiscal codes can be embedded in longer codes (e.g. SDD mandate ids): no word boundaries.
         $value = $this->replaceCounting('/[A-Z]{6}\d{2}[ABCDEHLMPRST]\d{2}[A-Z]\d{3}[A-Z]/i', '[CF]', $value, 'fiscal_codes');
         $value = $this->replaceCounting('/(?<!\d)\d{4}([\s-]?)\d{4}\1\d{4}\1\d{4}(?:\d{3})?(?!\d)/', '[CARTA]', $value, 'cards');
         $value = $this->maskPartialCardNumbers($value);
-        $value = $this->replaceCounting('/\b(conto\s+(?:n\.?\s*)?)\d{3,5}\/[\d\[\]A-Z]{4,}/iu', '$1[CONTO]', $value, 'accounts');
 
-        return $this->maskPeopleAfterKeywords($value);
+        return $this->replaceCounting('/\b(conto\s+(?:n\.?\s*)?)\d{3,5}\/[\d\[\]A-Z]{4,}/iu', '$1[CONTO]', $value, 'accounts');
+    }
+
+    /**
+     * True when the text still carries a masked personal element after scrubbing.
+     */
+    public static function containsMaskedData(string $value): bool
+    {
+        return preg_match('/PERSONA_\d+|\[(NOME|CARTA|IBAN|CF|EMAIL|CONTO|PREAMBOLO)\]/', $value) === 1;
     }
 
     public function maskPerson(string $name): string

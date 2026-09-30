@@ -4,6 +4,8 @@ namespace App\Http\Controllers\App;
 
 use App\Enums\Bank;
 use App\Enums\BankImportStatus;
+use App\Enums\CategorizationSource;
+use App\Enums\TransactionKind;
 use App\Enums\TransactionStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\App\StoreBankImportRequest;
@@ -12,8 +14,14 @@ use App\Models\BankTransaction;
 use App\Models\Category;
 use App\Services\BankImport\BankImportReviewer;
 use App\Services\BankImport\BankStatementImporter;
+use App\Services\BankImport\Llm\CategorizerException;
+use App\Services\BankImport\Llm\LlmCategorizationService;
+use App\Services\BankImport\Llm\LlmPayloadBuilder;
+use App\Services\BankImport\Llm\MerchantCategorizer;
+use App\Services\BankImport\StatementAlreadyImportedException;
 use App\Services\BankImport\UnsupportedStatementException;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -35,7 +43,6 @@ class BankImportController extends Controller
                 'status_label' => $import->status->label(),
                 'created_at' => $import->created_at?->toDateTimeString(),
             ]),
-            'banks' => array_map(fn (Bank $bank): array => ['value' => $bank->value, 'label' => $bank->label()], Bank::cases()),
         ]);
     }
 
@@ -49,12 +56,15 @@ class BankImportController extends Controller
             $import = $importer->import((string) $file->getRealPath(), $file->getClientOriginalName(), $bank);
         } catch (UnsupportedStatementException $e) {
             return back()->withErrors(['file' => $e->getMessage()]);
+        } catch (StatementAlreadyImportedException $e) {
+            return redirect()->route('bank-imports.show', $e->bankImportId)
+                ->with('notice', 'File già importato: nessun movimento nuovo, ti mostro l\'import esistente.');
         }
 
         return redirect()->route('bank-imports.show', $import);
     }
 
-    public function show(BankImport $bankImport): Response
+    public function show(BankImport $bankImport, LlmPayloadBuilder $payloadBuilder, MerchantCategorizer $categorizer): Response
     {
         $transactions = $bankImport->transactions()
             ->with('category:id,name,type,color')
@@ -93,8 +103,51 @@ class BankImportController extends Controller
                 'status' => $bankImport->status->value,
             ],
             'transactions' => $transactions,
+            'pipeline' => [
+                'anonymization' => $bankImport->anonymization_stats ?? [],
+                'kinds' => collect(TransactionKind::cases())
+                    ->map(fn (TransactionKind $kind): array => [
+                        'label' => $kind->label(),
+                        'count' => $transactions->where('kind', $kind->value)->count(),
+                    ])
+                    ->filter(fn (array $kind): bool => $kind['count'] > 0)
+                    ->values(),
+                'local' => [
+                    'memory' => $transactions->whereIn('source', [CategorizationSource::Memory->value, CategorizationSource::Keyword->value])->where('status', '!=', TransactionStatus::Excluded->value)->count(),
+                    'excluded' => $transactions->where('status', TransactionStatus::Excluded->value)->count(),
+                    'bank' => $transactions->where('source', CategorizationSource::Bank->value)->count(),
+                ],
+                'llm' => [
+                    'provider' => $categorizer->name(),
+                    'unavailable_reason' => $categorizer->unavailableReason(),
+                    'ran_at' => $bankImport->llm_ran_at?->toDateTimeString(),
+                    'stats' => $bankImport->llm_stats,
+                    'preview' => $bankImport->status === BankImportStatus::Review ? $payloadBuilder->preview($bankImport) : null,
+                ],
+            ],
             'categories' => Category::query()->orderBy('type')->orderBy('sort_order')->get(['id', 'name', 'type', 'color']),
         ]);
+    }
+
+    public function categorize(Request $request, BankImport $bankImport, LlmCategorizationService $service): RedirectResponse
+    {
+        /** @var list<string> $excluded */
+        $excluded = $request->validate([
+            'excluded' => ['array'],
+            'excluded.*' => ['string'],
+        ])['excluded'] ?? [];
+
+        if ($bankImport->status === BankImportStatus::Completed) {
+            return back()->withErrors(['llm' => 'Import già confermato.']);
+        }
+
+        try {
+            $service->run($bankImport, $excluded);
+        } catch (CategorizerException $e) {
+            return back()->withErrors(['llm' => $e->getMessage()]);
+        }
+
+        return back();
     }
 
     public function complete(BankImport $bankImport, BankImportReviewer $reviewer): RedirectResponse

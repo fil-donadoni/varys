@@ -1,7 +1,7 @@
 import { Link, usePage } from '@inertiajs/react';
-import { BarChart3, Euro, FileSpreadsheet, FolderOpen, ReceiptEuro, Scale, Settings } from 'lucide-react';
-import type { ReactNode } from 'react';
-import { Toaster } from 'sonner';
+import { BarChart3, Euro, FolderOpen, ReceiptEuro, Scale, Settings } from 'lucide-react';
+import { type ReactNode, useEffect } from 'react';
+import { toast, Toaster } from 'sonner';
 import { cn } from '@/lib/utils';
 
 interface AppLayoutProps {
@@ -12,14 +12,20 @@ const navigation = [
     { name: 'Dashboard', href: '/', icon: BarChart3 },
     { name: 'Budget', href: '/budget', icon: Euro },
     { name: 'Consuntivo', href: '/actual', icon: ReceiptEuro },
-    { name: 'Import', href: '/bank-imports', icon: FileSpreadsheet },
     { name: 'Categorie', href: '/categories', icon: FolderOpen },
     { name: 'Riconciliazione', href: '/reconciliations', icon: Scale },
     { name: 'Impostazioni', href: '/settings', icon: Settings },
 ];
 
 export default function AppLayout({ children }: AppLayoutProps) {
-    const { url } = usePage();
+    const { url, props } = usePage<{ notice?: string | null }>();
+
+    // One-off messages from the server (e.g. "file already imported").
+    useEffect(() => {
+        if (props.notice) {
+            toast.info(props.notice, { id: props.notice });
+        }
+    }, [props.notice]);
 
     return (
         <div className="min-h-screen bg-background">
