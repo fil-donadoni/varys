@@ -21,10 +21,17 @@ const onError = () => toast.error('Operazione non riuscita');
 export function LineRow({ line, category, categories }: LineRowProps) {
     const [editing, setEditing] = useState(false);
     const [confirmDelete, setConfirmDelete] = useState(false);
+    // Excluded movements drop out of this page and can only come back by re-importing: ask first.
+    const [confirmExclude, setConfirmExclude] = useState(false);
     const [processing, setProcessing] = useState(false);
     const options = { preserveScroll: true, onError, onFinish: () => setProcessing(false) };
 
     function reassign(categoryId: number | null, exclude: boolean) {
+        if (exclude && !confirmExclude) {
+            setConfirmExclude(true);
+            return;
+        }
+        setConfirmExclude(false);
         setProcessing(true);
         router.patch(`/bank-transactions/${line.id}/reassign`, { category_id: categoryId, exclude }, options);
     }
@@ -72,7 +79,28 @@ export function LineRow({ line, category, categories }: LineRowProps) {
             </Badge>
             <span className="w-24 text-right font-medium tabular-nums">{formatCurrency(line.amount)}</span>
             <div className="flex w-60 justify-end gap-1">
-                {line.kind === 'bank' ? (
+                {line.kind === 'bank' && confirmExclude ? (
+                    <>
+                        <span className="self-center text-muted-foreground">Escludere dal consuntivo?</span>
+                        <Button
+                            size="sm"
+                            variant="destructive"
+                            className="h-7 text-xs"
+                            disabled={processing}
+                            onClick={() => reassign(null, true)}
+                        >
+                            Escludi
+                        </Button>
+                        <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 text-xs"
+                            onClick={() => setConfirmExclude(false)}
+                        >
+                            No
+                        </Button>
+                    </>
+                ) : line.kind === 'bank' ? (
                     <CategoryCombobox
                         categories={categories}
                         amount={line.bank_amount ?? 0}
