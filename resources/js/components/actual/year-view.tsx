@@ -189,11 +189,11 @@ export function YearView({ year, categories, report, onOpenMonth }: YearViewProp
                         </span>
                     ))}
                 </div>
-                <div className="overflow-x-auto rounded-lg border bg-card shadow-xs">
+                <div className="rounded-lg border bg-card shadow-xs [&_[data-slot=table-container]]:max-h-[calc(100svh-8rem)] [&_[data-slot=table-container]]:overflow-auto">
                     <Table className="text-xs">
-                        <TableHeader>
+                        <TableHeader className="sticky top-0 z-20 bg-muted">
                             <TableRow className="bg-muted hover:bg-muted">
-                                <TableHead className="sticky left-0 z-10 min-w-44 bg-muted pl-3 font-semibold">
+                                <TableHead className="sticky left-0 z-30 min-w-44 bg-muted pl-3 font-semibold">
                                     {sortButton('name', 'Categoria')}
                                 </TableHead>
                                 <TableHead className="text-right font-semibold">Budget/mese</TableHead>

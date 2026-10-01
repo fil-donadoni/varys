@@ -1,5 +1,6 @@
 import { Head, router } from '@inertiajs/react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useEffect, useRef } from 'react';
 import { actualOf, MonthView } from '@/components/actual/month-view';
 import type { ActualCategory, ActualLine, VarianceReport } from '@/components/actual/types';
 import { YearView } from '@/components/actual/year-view';
@@ -7,6 +8,7 @@ import { BankImportDialog } from '@/components/shared/bank-import-dialog';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import AppLayout from '@/layouts/app-layout';
+import { saveActualView, viewToRestore } from '@/lib/actual-view-preference';
 import { cn, formatCurrency, formatMonth } from '@/lib/utils';
 
 type Tab = 'month' | 'year';
@@ -66,6 +68,25 @@ export default function ActualIndex({
     lines,
     report,
 }: Props) {
+    const restoring = useRef(false);
+
+    useEffect(() => {
+        const saved = viewToRestore(window.location.search, { tab, year, month });
+        if (saved !== null) {
+            restoring.current = true;
+            router.get('/actual', { ...saved }, { replace: true });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- restore only on page entry
+    }, []);
+
+    useEffect(() => {
+        if (restoring.current) {
+            restoring.current = false;
+            return;
+        }
+        saveActualView({ tab, year, month });
+    }, [tab, year, month]);
+
     const shiftMonth = (delta: number) => {
         const index = year * 12 + (month - 1) + delta;
         visit({ tab, year: Math.floor(index / 12), month: (index % 12) + 1 });
